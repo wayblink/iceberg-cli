@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+TARGET_DIR="$PROJECT_DIR/target"
+
+find_jar() {
+  if [ ! -d "$TARGET_DIR" ]; then
+    return 1
+  fi
+
+  find "$TARGET_DIR" -maxdepth 1 -type f -name 'iceberg-inspect-*.jar' \
+    ! -name 'original-*' \
+    | sort \
+    | tail -n 1
+}
+
+JAR_PATH=$(find_jar || true)
+
+if [ -z "${JAR_PATH:-}" ] || [ ! -f "$JAR_PATH" ]; then
+  echo "Missing packaged jar under $TARGET_DIR" >&2
+  echo "Run: mvn -s .mvn/settings.xml package" >&2
+  exit 1
+fi
+
+exec java ${JAVA_OPTS:-} -jar "$JAR_PATH" "$@"
