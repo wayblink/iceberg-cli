@@ -112,7 +112,7 @@ mvn -s .mvn/settings.xml package
 ./bin/install-local.sh
 ```
 
-By default the installer writes `iceberg-inspect` to `~/.local/bin/iceberg-inspect`. If `~/.local/bin` is not on your `PATH`, add this line to `~/.zshrc` or `~/.bashrc`:
+By default the installer writes the launcher to `~/.local/bin/iceberg-inspect` and copies the packaged jar to `~/.local/lib/iceberg-inspect/`. The installed command runs the copied jar, so it no longer depends on the source repository after installation. If `~/.local/bin` is not on your `PATH`, add this line to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -122,6 +122,14 @@ You can also install to a custom directory:
 
 ```bash
 ./bin/install-local.sh /usr/local/bin
+```
+
+That layout installs the launcher to `/usr/local/bin/iceberg-inspect` and the jar to `/usr/local/lib/iceberg-inspect/`.
+
+If you built with a custom Maven output directory, point the installer at it:
+
+```bash
+PROJECT_BUILD_DIRECTORY=/tmp/iceberg-inspect-target ./bin/install-local.sh
 ```
 
 After installation:

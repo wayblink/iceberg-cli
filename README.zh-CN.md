@@ -112,7 +112,7 @@ mvn -s .mvn/settings.xml package
 ./bin/install-local.sh
 ```
 
-安装脚本默认把 `iceberg-inspect` 写到 `~/.local/bin/iceberg-inspect`。如果你的 `PATH` 里还没有 `~/.local/bin`，把下面这行加到 `~/.zshrc` 或 `~/.bashrc`：
+安装脚本默认会把启动脚本写到 `~/.local/bin/iceberg-inspect`，并把打包好的 jar 复制到 `~/.local/lib/iceberg-inspect/`。安装后的命令直接运行这份已安装的 jar，不再依赖源码仓库路径。如果你的 `PATH` 里还没有 `~/.local/bin`，把下面这行加到 `~/.zshrc` 或 `~/.bashrc`：
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -122,6 +122,14 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```bash
 ./bin/install-local.sh /usr/local/bin
+```
+
+这种布局会把启动脚本安装到 `/usr/local/bin/iceberg-inspect`，并把 jar 安装到 `/usr/local/lib/iceberg-inspect/`。
+
+如果你构建时把 Maven 输出目录改到了别处，安装前先指定 `PROJECT_BUILD_DIRECTORY`：
+
+```bash
+PROJECT_BUILD_DIRECTORY=/tmp/iceberg-inspect-target ./bin/install-local.sh
 ```
 
 安装完成后就可以直接运行：

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wayblink.iceberg.testsupport.IcebergTableFixtures;
+import com.wayblink.iceberg.testsupport.IcebergTableFixtures.MirroredMetadataFixture;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -48,22 +49,27 @@ class ShowCommandsTest {
   }
 
   @Test
-  void showCommandsReadMirroredLocalMetadataArtifactsWhenOriginalPathsAreRemote() {
+  void showCommandsReadMirroredLocalMetadataArtifactsWhenOriginalPathsAreRemote() throws IOException {
     Path sessionFile = tempDir.resolve("session.json");
     ByteArrayOutputStream stdout = new ByteArrayOutputStream();
     CommandLine cli = cli(sessionFile, stdout);
-    Path sampleMetadataDir = Path.of(System.getProperty("user.dir")).resolve("metadata");
+    MirroredMetadataFixture fixture = IcebergTableFixtures.createMirroredRemoteMetadataFixture(tempDir);
 
-    assertEquals(0, cli.execute("open", sampleMetadataDir.toString()));
-    assertEquals(0, cli.execute("show", "snapshots"));
-    assertEquals(0, cli.execute("show", "manifests"));
+    int openExitCode = cli.execute("open", fixture.metadataDir().toString());
+    assertEquals(0, openExitCode, stdout.toString(StandardCharsets.UTF_8));
+    stdout.reset();
 
-    String output = stdout.toString(StandardCharsets.UTF_8);
-    assertTrue(output.contains("Snapshot History"));
-    assertTrue(output.contains("Manifest List"));
-    assertTrue(output.contains("103679476631229492"));
-    assertTrue(output.contains("s3a://stepcrawl"));
-    assertTrue(output.contains("m1.avro"));
+    assertEquals(0, cli.execute("show", "snapshots", "--json"));
+    String snapshotsOutput = stdout.toString(StandardCharsets.UTF_8);
+    assertTrue(snapshotsOutput.contains("\"resultType\":\"show-snapshots\""));
+    assertTrue(snapshotsOutput.contains(Long.toString(fixture.snapshotId())), snapshotsOutput);
+
+    stdout.reset();
+    assertEquals(0, cli.execute("show", "manifests", "--json"));
+    String manifestsOutput = stdout.toString(StandardCharsets.UTF_8);
+    assertTrue(manifestsOutput.contains("\"resultType\":\"show-manifests\""));
+    assertTrue(manifestsOutput.contains(fixture.remoteTableLocation()), manifestsOutput);
+    assertTrue(manifestsOutput.contains(fixture.firstManifestName()), manifestsOutput);
   }
 
   @Test
