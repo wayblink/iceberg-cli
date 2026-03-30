@@ -77,7 +77,7 @@ public final class ShowMetadataLogCommand implements Callable<Integer> {
       TableContext tableContext, Map<String, Object> context, List<Map<String, Object>> rows) {
     return payloadBuilder.payload(
         "show-metadata-log",
-        tableContext.tableRoot().toString(),
+        tableContext.tableRoot(),
         tableContext.metadata().formatVersion(),
         Map.of(),
         context,

@@ -9,7 +9,7 @@ import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
-import java.nio.file.Path;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -43,10 +43,13 @@ public final class ScanTableCommand implements Callable<Integer> {
   private ScanCommand scanCommand;
 
   @Option(names = "--path", description = "Path to a metadata directory, metadata file, or table root.")
-  private Path path;
+  private String path;
 
   @Mixin
   private RenderOptions renderOptions;
+
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
 
   @Spec
   private CommandSpec spec;
@@ -54,23 +57,25 @@ public final class ScanTableCommand implements Callable<Integer> {
   @Override
   public Integer call() {
     RootCommand rootCommand = scanCommand.rootCommand();
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
     ResolvedTarget target = path == null
-        ? rootCommand.requireCurrentResolvedTarget()
-        : rootCommand.targetResolver().resolve(path);
+        ? rootCommand.requireCurrentResolvedTarget(storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides())
+        : rootCommand.targetResolver().resolve(path, storageOptions);
     Integer formatVersion = target.currentMetadataFile() == null
         ? null
-        : rootCommand.versionDetector().detect(target.currentMetadataFile());
+        : rootCommand.versionDetector().detect(target.currentMetadataFile(), storageOptions);
 
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("targetType", target.type().name());
-    row.put("inputPath", target.inputPath().toString());
-    row.put("tableRoot", target.tableRoot() == null ? null : target.tableRoot().toString());
-    row.put("metadataRoot", target.metadataRoot().toString());
-    row.put("currentMetadataFile", target.currentMetadataFile() == null ? null : target.currentMetadataFile().toString());
+    row.put("inputPath", target.inputPath());
+    row.put("tableRoot", target.tableRoot());
+    row.put("metadataRoot", target.metadataRoot());
+    row.put("currentMetadataFile", target.currentMetadataFile());
 
     AnalysisResult result = new AnalysisResult(
         "scan-table",
-        target.inputPath().toString(),
+        target.inputPath(),
         formatVersion,
         new AnalysisRequest(AnalysisScope.CURRENT, AnalysisGroupBy.TABLE, AnalysisPrecision.SUMMARY),
         Collections.singletonList(row));

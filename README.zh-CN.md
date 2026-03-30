@@ -2,14 +2,38 @@
 
 [English README](./README.md)
 
-`iceberg-inspect` 是一个本地 Iceberg 元信息分析命令行工具。当前版本聚焦本地路径，支持自动识别 V1/V2/V3 metadata，支持 session 化 `open` 工作流，并提供表、metadata-version、snapshot、partition 四个层级的结构查看与基础统计。
+`iceberg-inspect` 是一个支持本地路径、HDFS 和 S3A 的 Iceberg 元信息分析命令行工具。它支持自动识别 V1/V2/V3 metadata，支持 session 化 `open` 工作流，并提供表、metadata-version、snapshot、partition 四个层级的结构查看与基础统计。
+
+## 快速开始
+
+先构建可执行 jar：
+
+```bash
+mvn -s .mvn/settings.xml package
+```
+
+优先使用仓库内自带启动脚本：
+
+```bash
+./bin/iceberg-inspect --help
+```
+
+打开一张本地表，并复用当前 session：
+
+```bash
+iceberg-inspect open /data/warehouse/db/orders/metadata
+iceberg-inspect current
+iceberg-inspect show table
+iceberg-inspect stat table --json
+```
 
 ## 当前能力
 
 - 打开单表 `metadata/` 目录、单个 `*.metadata.json` 文件或 warehouse 根目录
 - 在本地 session 中缓存 current target，后续命令可省略 `--path`
 - 自动识别表的 `format-version`
-- 支持解析从 S3 或 HDFS 拷贝到本地的 metadata 镜像目录，只要被引用的 metadata 和 manifest 文件也一并拷到本地
+- 通过 Hadoop `FileIO` 直接读取本地文件系统、HDFS 和 S3A 上的表
+- 继续支持解析从 S3 或 HDFS 拷贝到本地的 metadata 镜像目录，只要被引用的 metadata 和 manifest 文件也一并拷到本地
 - 查看表结构、snapshot、metadata log、manifest、partition
 - 统计表级、metadata-version 级、snapshot 级、partition 级指标
 - 扫描 warehouse 下的多张表
@@ -48,18 +72,6 @@
 - `rows`：明细记录数组
 - 本地文件系统路径统一输出为普通字符串，不输出 `file:///...` URI
 
-## 项目目录
-
-```text
-iceberg-cli/
-├── .mvn/
-├── bin/
-├── pom.xml
-├── src/
-├── README.md
-└── README.zh-CN.md
-```
-
 默认在 `iceberg-cli/` 目录下执行命令。
 
 ## 构建与测试
@@ -80,6 +92,16 @@ mvn -s .mvn/settings.xml test
 ```bash
 mvn -s .mvn/settings.xml verify
 ```
+
+现在 `verify` 会包含两类集成测试：
+
+- 基于 `MiniDFSCluster` 的 HDFS 集成测试
+- 基于 MinIO + Testcontainers 的 S3A 集成测试
+
+说明：
+
+- 如果当前机器没有 Docker，S3A 集成测试会自动跳过。
+- 如果你的环境限制 Maven 下载依赖，建议先在可联网环境执行一次 `verify`。
 
 构建可执行 fat jar：
 
@@ -192,10 +214,85 @@ iceberg-inspect use table db/table_a
 iceberg-inspect stat warehouse --group-by table
 ```
 
+## 存储后端
+
+`iceberg-inspect` 当前支持三类存储后端：
+
+- 本地文件系统：显式本地路径，或不带 URI scheme 的路径
+- HDFS：`hdfs://...`，可选搭配 `--fs hdfs --hadoop-conf-dir /etc/hadoop/conf`
+- S3A：`s3a://...`，可选搭配 `--fs s3a --s3-endpoint ... --s3-region ... --s3-path-style`
+
+说明：
+
+- 如果路径本身已经带了受支持的 URI scheme，`--fs` 可以省略。
+- `open` 会把当前存储配置一起写进 session，后续 `show`、`scan`、`stat` 可以同时省略 `--path` 和存储参数。
+- 工具会显式拒绝 `s3://`。在 Hadoop/Iceberg 语境里请使用 `s3a://`，这样才能命中正确的文件系统实现。
+
+## HDFS 使用方法
+
+当 Iceberg metadata 和 manifest 文件存放在 Hadoop `FileSystem` 上时，使用 HDFS 模式。
+
+前置条件：
+
+- 目标路径使用 `hdfs://` scheme。
+- 本机可以拿到对应集群的 `core-site.xml` 和 `hdfs-site.xml`。
+- 如果环境变量里没有现成的 Hadoop client 配置，显式传入 `--hadoop-conf-dir`。
+
+打开 HDFS 上的一张表：
+
+```bash
+iceberg-inspect open hdfs://nameservice1/warehouse/db/table/metadata \
+  --fs hdfs \
+  --hadoop-conf-dir /etc/hadoop/conf
+```
+
+查看当前 session 和结构信息：
+
+```bash
+iceberg-inspect current
+iceberg-inspect show table
+iceberg-inspect show snapshots
+iceberg-inspect show manifests --limit 10
+```
+
+在不重复传存储参数的情况下继续做统计：
+
+```bash
+iceberg-inspect stat table
+iceberg-inspect stat table --scope history --group-by snapshot --json
+iceberg-inspect stat table --scope history --group-by partition --json
+```
+
+打开 HDFS 上的 warehouse 并扫描多张表：
+
+```bash
+iceberg-inspect open hdfs://nameservice1/warehouse \
+  --fs hdfs \
+  --hadoop-conf-dir /etc/hadoop/conf
+iceberg-inspect scan warehouse --json
+iceberg-inspect use table db/orders
+iceberg-inspect stat table
+```
+
+说明：
+
+- 执行 `open` 后，HDFS 后端和 Hadoop 配置目录会一起写入本地 session。
+- 如果路径本身已经以 `hdfs://` 开头，`--fs hdfs` 可以省略；保留它通常更利于脚本可读性。
+- 如果 nameservice 解析或 HA 配置异常，优先检查 `--hadoop-conf-dir` 是否指向了正确的集群配置目录。
+
+## S3A 使用方法
+
+打开 S3A 或 MinIO 上的一张表：
+
+```bash
+iceberg-inspect open s3a://warehouse-bucket/db/table/metadata \
+  --fs s3a \
+  --s3-endpoint http://minio:9000 \
+  --s3-region us-east-1 \
+  --s3-path-style
+iceberg-inspect stat table --json
+```
+
 ## Git
 
 `iceberg-cli/` 可以作为独立 git 仓库持续演进。
-
-## 当前范围
-
-当前版本只支持本地文件系统读取。后续可沿着现有 `FileIO` 抽象扩展 HDFS 和 S3。

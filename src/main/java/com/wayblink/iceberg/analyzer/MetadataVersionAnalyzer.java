@@ -13,7 +13,7 @@ public final class MetadataVersionAnalyzer {
   public List<Map<String, Object>> analyze(TableContext tableContext) {
     List<Map<String, Object>> rows = new ArrayList<>();
     rows.add(rowForMetadata(
-        tableContext.currentMetadataFile().toString(),
+        tableContext.currentMetadataFile(),
         tableContext.metadata().lastUpdatedMillis(),
         tableContext.metadata()));
     for (TableMetadata.MetadataLogEntry entry : tableContext.metadata().previousFiles()) {

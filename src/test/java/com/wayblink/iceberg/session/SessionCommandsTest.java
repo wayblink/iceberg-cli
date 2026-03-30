@@ -5,6 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.wayblink.iceberg.cli.RootCommand;
+import com.wayblink.iceberg.discovery.ResolvedTarget;
+import com.wayblink.iceberg.discovery.ResolvedTargetType;
+import com.wayblink.iceberg.storage.StorageBackend;
+import com.wayblink.iceberg.storage.StorageOptions;
 import com.wayblink.iceberg.testsupport.IcebergTableFixtures;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -69,6 +73,32 @@ class SessionCommandsTest {
     assertTrue(output.contains("target-type: TABLE_METADATA_DIR"));
     assertTrue(output.contains(secondTable.toString()));
     assertFalse(output.contains(firstTable.resolve("metadata").toString()));
+  }
+
+  @Test
+  void sessionStorePersistsStorageOptionsForRemoteTargets() {
+    Path sessionFile = tempDir.resolve("remote-session.json");
+    SessionStore sessionStore = new SessionStore(sessionFile);
+    StorageOptions storageOptions = StorageOptions.builder()
+        .backend(StorageBackend.S3A)
+        .s3Endpoint("http://minio:9000")
+        .s3Region("us-east-1")
+        .s3PathStyle(true)
+        .build();
+    ResolvedTarget target = new ResolvedTarget(
+        "s3a://bucket/warehouse/db/orders/metadata",
+        ResolvedTargetType.TABLE_METADATA_DIR,
+        "s3a://bucket/warehouse/db/orders",
+        "s3a://bucket/warehouse/db/orders/metadata",
+        "s3a://bucket/warehouse/db/orders/metadata/00001-a.metadata.json");
+
+    sessionStore.save(SessionState.fromResolvedTarget(target, 2, 123L, null, storageOptions));
+
+    SessionState restored = sessionStore.load().orElseThrow();
+    assertEquals(StorageBackend.S3A, restored.storageBackend());
+    assertEquals("http://minio:9000", restored.s3Endpoint());
+    assertEquals("us-east-1", restored.s3Region());
+    assertTrue(restored.s3PathStyle());
   }
 
   private static CommandLine cli(Path sessionFile, ByteArrayOutputStream stdout) {

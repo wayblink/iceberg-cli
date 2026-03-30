@@ -1,14 +1,16 @@
 package com.wayblink.iceberg.discovery;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
+import com.wayblink.iceberg.storage.StorageBackend;
+import com.wayblink.iceberg.storage.StorageExplorer;
+import com.wayblink.iceberg.storage.StorageExplorerFactory;
+import com.wayblink.iceberg.storage.StorageOptions;
+import com.wayblink.iceberg.storage.StoragePaths;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.OptionalInt;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 public final class TargetResolver {
 
@@ -17,138 +19,178 @@ public final class TargetResolver {
   private static final String METADATA_DIRECTORY_NAME = "metadata";
   private static final String VERSION_HINT_FILE_NAME = "version-hint.text";
 
+  private final StorageExplorerFactory explorerFactory;
+  private final StorageExplorer fixedExplorer;
+
+  public TargetResolver() {
+    this(new StorageExplorerFactory(), null);
+  }
+
+  public TargetResolver(StorageExplorer explorer) {
+    this(null, explorer);
+  }
+
+  public TargetResolver(StorageExplorerFactory explorerFactory) {
+    this(explorerFactory, null);
+  }
+
+  private TargetResolver(StorageExplorerFactory explorerFactory, StorageExplorer fixedExplorer) {
+    this.explorerFactory = explorerFactory;
+    this.fixedExplorer = fixedExplorer;
+  }
+
   public ResolvedTarget resolve(Path input) {
-    Path normalizedInput = normalizeExisting(input);
-    if (Files.isRegularFile(normalizedInput)) {
-      return resolveMetadataFile(normalizedInput);
+    return resolve(input.toString(), StorageOptions.defaults());
+  }
+
+  public ResolvedTarget resolve(String input) {
+    return resolve(input, StorageOptions.defaults());
+  }
+
+  public ResolvedTarget resolve(String input, StorageOptions options) {
+    StorageOptions resolvedOptions = options == null ? StorageOptions.defaults() : options;
+    StorageExplorer explorer = explorerFor(input, resolvedOptions);
+    StorageBackend backend = resolvedOptions.resolveBackend(input);
+    String normalizedInput = normalizeExisting(input, backend, explorer);
+    if (explorer.isFile(normalizedInput)) {
+      return resolveMetadataFile(normalizedInput, backend, explorer);
     }
 
-    if (isMetadataDirectory(normalizedInput)) {
-      return resolveMetadataDirectory(normalizedInput, normalizedInput);
+    if (isMetadataDirectory(normalizedInput, explorer)) {
+      return resolveMetadataDirectory(normalizedInput, normalizedInput, backend, explorer);
     }
 
-    Path nestedMetadataDirectory = normalizedInput.resolve(METADATA_DIRECTORY_NAME);
-    if (isMetadataDirectory(nestedMetadataDirectory)) {
-      return resolveMetadataDirectory(normalizedInput, nestedMetadataDirectory);
+    String nestedMetadataDirectory = StoragePaths.resolve(normalizedInput, METADATA_DIRECTORY_NAME, backend);
+    if (isMetadataDirectory(nestedMetadataDirectory, explorer)) {
+      return resolveMetadataDirectory(normalizedInput, nestedMetadataDirectory, backend, explorer);
     }
 
-    if (looksLikeWarehouseRoot(normalizedInput)) {
+    if (looksLikeWarehouseRoot(normalizedInput, explorer)) {
       return new ResolvedTarget(normalizedInput, ResolvedTargetType.WAREHOUSE, null, normalizedInput, null);
     }
 
     throw new IllegalArgumentException("Unsupported Iceberg target: " + normalizedInput);
   }
 
-  Path resolveCurrentMetadataFile(Path metadataDirectory) {
-    OptionalInt hintedVersion = readVersionHint(metadataDirectory);
+  String resolveCurrentMetadataFile(String metadataDirectory, StorageOptions options) {
+    StorageOptions resolvedOptions = options == null ? StorageOptions.defaults() : options;
+    StorageExplorer explorer = explorerFor(metadataDirectory, resolvedOptions);
+    StorageBackend backend = resolvedOptions.resolveBackend(metadataDirectory);
+    return resolveCurrentMetadataFile(metadataDirectory, explorer, backend);
+  }
+
+  private String resolveCurrentMetadataFile(
+      String metadataDirectory, StorageExplorer explorer, StorageBackend backend) {
+    OptionalInt hintedVersion = readVersionHint(metadataDirectory, backend, explorer);
     if (hintedVersion.isPresent()) {
-      Path hintedFile = metadataDirectory.resolve("v" + hintedVersion.getAsInt() + ".metadata.json");
-      if (Files.isRegularFile(hintedFile)) {
-        return hintedFile.toAbsolutePath().normalize();
+      String hintedFile =
+          StoragePaths.resolve(metadataDirectory, "v" + hintedVersion.getAsInt() + ".metadata.json", backend);
+      if (explorer.isFile(hintedFile)) {
+        return explorer.normalize(hintedFile);
       }
     }
 
-    try (Stream<Path> stream = Files.list(metadataDirectory)) {
-      return stream
-          .filter(Files::isRegularFile)
-          .filter(this::isMetadataFile)
-          .max(Comparator.comparingInt(this::metadataVersion))
-          .map(path -> path.toAbsolutePath().normalize())
-          .orElseThrow(() -> new IllegalArgumentException("No metadata file found under " + metadataDirectory));
-    } catch (IOException exception) {
-      throw new IllegalArgumentException("Failed to list metadata directory " + metadataDirectory, exception);
-    }
+    return explorer.list(metadataDirectory).stream()
+        .filter(explorer::isFile)
+        .filter(this::isMetadataFile)
+        .max(Comparator.comparingInt(this::metadataVersion))
+        .map(explorer::normalize)
+        .orElseThrow(() -> new IllegalArgumentException("No metadata file found under " + metadataDirectory));
   }
 
-  private ResolvedTarget resolveMetadataFile(Path metadataFile) {
+  public StorageExplorer explorerFor(String path, StorageOptions options) {
+    if (fixedExplorer != null) {
+      return fixedExplorer;
+    }
+    return explorerFactory.create(path, options);
+  }
+
+  private ResolvedTarget resolveMetadataFile(String metadataFile, StorageBackend backend, StorageExplorer explorer) {
     if (!isMetadataFile(metadataFile)) {
       throw new IllegalArgumentException("Unsupported metadata file: " + metadataFile);
     }
 
-    Path metadataRoot = metadataFile.getParent();
-    Path tableRoot = metadataRoot == null ? null : metadataRoot.getParent();
-    return new ResolvedTarget(
-        metadataFile,
-        ResolvedTargetType.METADATA_FILE,
-        tableRoot,
-        metadataRoot,
-        metadataFile);
+    String metadataRoot = StoragePaths.parent(metadataFile, backend);
+    String tableRoot = metadataRoot == null ? null : StoragePaths.parent(metadataRoot, backend);
+    return new ResolvedTarget(metadataFile, ResolvedTargetType.METADATA_FILE, tableRoot, metadataRoot, metadataFile);
   }
 
-  private ResolvedTarget resolveMetadataDirectory(Path inputPath, Path metadataDirectory) {
-    Path metadataRoot = metadataDirectory.toAbsolutePath().normalize();
-    Path tableRoot = metadataRoot.getParent();
+  private ResolvedTarget resolveMetadataDirectory(
+      String inputPath, String metadataDirectory, StorageBackend backend, StorageExplorer explorer) {
+    String metadataRoot = explorer.normalize(metadataDirectory);
+    String tableRoot = StoragePaths.parent(metadataRoot, backend);
     return new ResolvedTarget(
         inputPath,
         ResolvedTargetType.TABLE_METADATA_DIR,
         tableRoot,
         metadataRoot,
-        resolveCurrentMetadataFile(metadataRoot));
+        resolveCurrentMetadataFile(metadataRoot, explorer, backend));
   }
 
-  private Path normalizeExisting(Path input) {
-    Path normalized = input.toAbsolutePath().normalize();
-    if (Files.notExists(normalized)) {
+  private String normalizeExisting(String input, StorageBackend backend, StorageExplorer explorer) {
+    String normalized = explorer.normalize(input);
+    if (!explorer.exists(normalized)) {
       throw new IllegalArgumentException("Path does not exist: " + normalized);
     }
     return normalized;
   }
 
-  private boolean isMetadataDirectory(Path directory) {
-    return Files.isDirectory(directory) && hasMetadataArtifacts(directory);
+  private boolean isMetadataDirectory(String directory, StorageExplorer explorer) {
+    return explorer.isDirectory(directory) && hasMetadataArtifacts(directory, explorer);
   }
 
-  private boolean hasMetadataArtifacts(Path directory) {
-    if (Files.isRegularFile(directory.resolve(VERSION_HINT_FILE_NAME))) {
+  private boolean hasMetadataArtifacts(String directory, StorageExplorer explorer) {
+    String versionHint = StoragePaths.resolve(directory, VERSION_HINT_FILE_NAME, backendFor(directory));
+    if (explorer.isFile(versionHint)) {
       return true;
     }
-
-    try (Stream<Path> stream = Files.list(directory)) {
-      return stream.anyMatch(this::isMetadataFile);
-    } catch (IOException exception) {
-      throw new IllegalArgumentException("Failed to inspect directory " + directory, exception);
-    }
+    return explorer.list(directory).stream().anyMatch(this::isMetadataFile);
   }
 
-  private boolean looksLikeWarehouseRoot(Path directory) {
-    if (!Files.isDirectory(directory)) {
+  private boolean looksLikeWarehouseRoot(String directory, StorageExplorer explorer) {
+    if (!explorer.isDirectory(directory)) {
       return false;
     }
-
-    try (Stream<Path> stream = Files.walk(directory, 3)) {
-      return stream
-          .filter(Files::isDirectory)
-          .filter(path -> !path.equals(directory))
-          .anyMatch(this::isMetadataDirectory);
-    } catch (IOException exception) {
-      throw new IllegalArgumentException("Failed to scan warehouse root " + directory, exception);
-    }
+    return explorer.walk(directory, 3).stream()
+        .filter(path -> !directory.equals(path))
+        .filter(explorer::isDirectory)
+        .anyMatch(path -> isMetadataDirectory(path, explorer));
   }
 
-  private OptionalInt readVersionHint(Path metadataDirectory) {
-    Path versionHint = metadataDirectory.resolve(VERSION_HINT_FILE_NAME);
-    if (Files.notExists(versionHint)) {
+  private OptionalInt readVersionHint(String metadataDirectory, StorageBackend backend, StorageExplorer explorer) {
+    String versionHint = StoragePaths.resolve(metadataDirectory, VERSION_HINT_FILE_NAME, backend);
+    if (!explorer.exists(versionHint)) {
       return OptionalInt.empty();
     }
 
     try {
-      String raw = Files.readString(versionHint, StandardCharsets.UTF_8).trim();
+      String raw = explorer.readText(versionHint).trim();
       return OptionalInt.of(Integer.parseInt(raw));
-    } catch (IOException | NumberFormatException exception) {
+    } catch (RuntimeException exception) {
       return OptionalInt.empty();
     }
   }
 
-  private boolean isMetadataFile(Path candidate) {
-    return Files.isRegularFile(candidate)
-        && METADATA_FILE_PATTERN.matcher(candidate.getFileName().toString()).matches();
+  private boolean isMetadataFile(String candidate) {
+    return METADATA_FILE_PATTERN.matcher(StoragePaths.fileName(candidate, backendFor(candidate))).matches();
   }
 
-  private int metadataVersion(Path metadataFile) {
-    Matcher matcher = METADATA_FILE_PATTERN.matcher(metadataFile.getFileName().toString());
+  private int metadataVersion(String metadataFile) {
+    Matcher matcher = METADATA_FILE_PATTERN.matcher(StoragePaths.fileName(metadataFile, backendFor(metadataFile)));
     if (!matcher.matches()) {
       return Integer.MIN_VALUE;
     }
     return Integer.parseInt(matcher.group(1));
+  }
+
+  private StorageBackend backendFor(String path) {
+    String scheme = StoragePaths.scheme(path);
+    if (scheme == null || "file".equalsIgnoreCase(scheme)) {
+      return StorageBackend.LOCAL;
+    }
+    if ("hdfs".equalsIgnoreCase(scheme)) {
+      return StorageBackend.HDFS;
+    }
+    return StorageBackend.S3A;
   }
 }

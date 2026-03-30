@@ -135,7 +135,7 @@ public final class ShowManifestsCommand implements Callable<Integer> {
     request.put("limit", limit);
     return payloadBuilder.payload(
         "show-manifests",
-        tableContext.tableRoot().toString(),
+        tableContext.tableRoot(),
         tableContext.metadata().formatVersion(),
         request,
         payloadBuilder.summary(rows.size()),

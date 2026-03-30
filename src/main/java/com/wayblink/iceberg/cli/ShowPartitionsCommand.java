@@ -115,7 +115,7 @@ public final class ShowPartitionsCommand implements Callable<Integer> {
     request.put("limit", limit);
     return payloadBuilder.payload(
         "show-partitions",
-        tableContext.tableRoot().toString(),
+        tableContext.tableRoot(),
         tableContext.metadata().formatVersion(),
         request,
         payloadBuilder.summary(rows.size()),

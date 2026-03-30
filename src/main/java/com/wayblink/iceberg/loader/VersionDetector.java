@@ -1,16 +1,31 @@
 package com.wayblink.iceberg.loader;
 
-import java.nio.file.Path;
-import org.apache.hadoop.conf.Configuration;
+import com.wayblink.iceberg.io.DefaultFileIOProvider;
+import com.wayblink.iceberg.io.FileIOProvider;
+import com.wayblink.iceberg.storage.StorageOptions;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
-import org.apache.iceberg.hadoop.HadoopFileIO;
+import org.apache.iceberg.io.FileIO;
 
 public final class VersionDetector {
 
-  public int detect(Path metadataFile) {
-    HadoopFileIO fileIO = new HadoopFileIO(new Configuration());
-    TableMetadata metadata = TableMetadataParser.read(fileIO, metadataFile.toAbsolutePath().toString());
+  private final FileIOProvider fileIOProvider;
+
+  public VersionDetector() {
+    this(new DefaultFileIOProvider());
+  }
+
+  public VersionDetector(FileIOProvider fileIOProvider) {
+    this.fileIOProvider = fileIOProvider;
+  }
+
+  public int detect(String metadataFile) {
+    return detect(metadataFile, StorageOptions.defaults());
+  }
+
+  public int detect(String metadataFile, StorageOptions options) {
+    FileIO fileIO = fileIOProvider.createBootstrap(options, metadataFile);
+    TableMetadata metadata = TableMetadataParser.read(fileIO, metadataFile);
     return metadata.formatVersion();
   }
 }

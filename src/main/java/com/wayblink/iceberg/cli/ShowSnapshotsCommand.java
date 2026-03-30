@@ -69,7 +69,7 @@ public final class ShowSnapshotsCommand implements Callable<Integer> {
   private Map<String, Object> jsonPayload(TableContext tableContext, List<Map<String, Object>> rows) {
     return payloadBuilder.payload(
         "show-snapshots",
-        tableContext.tableRoot().toString(),
+        tableContext.tableRoot(),
         tableContext.metadata().formatVersion(),
         Map.of(),
         payloadBuilder.summary(rows.size()),

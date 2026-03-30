@@ -12,6 +12,9 @@ import org.junit.jupiter.api.Test;
 
 class LauncherScriptIT {
 
+  private static final String ROOT_HELP_DESCRIPTION =
+      "Inspect Iceberg metadata targets from local paths, HDFS, or S3A.";
+
   @Test
   void launcherScriptShowsHelp() throws IOException, InterruptedException {
     Path projectDirectory = Path.of(System.getProperty("user.dir"));
@@ -24,7 +27,7 @@ class LauncherScriptIT {
     int exitCode = process.waitFor();
 
     assertEquals(0, exitCode);
-    assertTrue(output.contains("Inspect local Iceberg metadata targets from a local metadata directory"));
+    assertTrue(output.contains(ROOT_HELP_DESCRIPTION));
     assertTrue(output.contains("Commands:"));
     assertTrue(output.contains("Examples:"));
   }

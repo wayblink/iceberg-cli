@@ -15,6 +15,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 class InstallLocalScriptIT {
 
+  private static final String ROOT_HELP_DESCRIPTION =
+      "Inspect Iceberg metadata targets from local paths, HDFS, or S3A.";
+
   @TempDir
   Path tempDir;
 
@@ -46,7 +49,7 @@ class InstallLocalScriptIT {
     int helpExitCode = helpProcess.waitFor();
 
     assertEquals(0, helpExitCode, helpOutput);
-    assertTrue(helpOutput.contains("Inspect local Iceberg metadata targets from a local metadata directory"));
+    assertTrue(helpOutput.contains(ROOT_HELP_DESCRIPTION));
   }
 
   private static String readAll(InputStream inputStream) throws IOException {

@@ -3,13 +3,15 @@ package com.wayblink.iceberg.cli;
 import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.discovery.TargetResolver;
 import com.wayblink.iceberg.discovery.WarehouseScanner;
-import com.wayblink.iceberg.io.LocalFileIOProvider;
+import com.wayblink.iceberg.io.DefaultFileIOProvider;
+import com.wayblink.iceberg.io.FileIOProvider;
 import com.wayblink.iceberg.loader.TableContext;
 import com.wayblink.iceberg.loader.TableLoader;
 import com.wayblink.iceberg.loader.VersionDetector;
 import com.wayblink.iceberg.session.SessionResolver;
 import com.wayblink.iceberg.session.SessionState;
 import com.wayblink.iceberg.session.SessionStore;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,7 +22,7 @@ import picocli.CommandLine.Command;
     name = "iceberg-inspect",
     mixinStandardHelpOptions = true,
     description = {
-        "Inspect local Iceberg metadata targets from a local metadata directory, metadata JSON file, or warehouse root.",
+        "Inspect Iceberg metadata targets from local paths, HDFS, or S3A.",
         "Use `open` once to establish a current session, then run `show`, `stat`, or `scan` commands without repeating --path."
     },
     descriptionHeading = "%nDescription:%n",
@@ -29,6 +31,8 @@ import picocli.CommandLine.Command;
     footerHeading = "%nExamples:%n",
     footer = {
         "  iceberg-inspect open /warehouse/db/orders/metadata",
+        "  iceberg-inspect open hdfs://nameservice1/warehouse/db/orders/metadata --fs hdfs --hadoop-conf-dir /etc/hadoop/conf",
+        "  iceberg-inspect open s3a://bucket/warehouse/db/orders/metadata --fs s3a --s3-endpoint http://minio:9000 --s3-region us-east-1 --s3-path-style",
         "  iceberg-inspect stat table --scope all --group-by snapshot",
         "  iceberg-inspect show manifests --snapshot-id 123456789",
         "",
@@ -55,14 +59,14 @@ public final class RootCommand implements Runnable {
   private final TableLoader tableLoader;
 
   public RootCommand() {
-    this(defaultSessionStore(), new TargetResolver(), new VersionDetector(), new LocalFileIOProvider());
+    this(defaultSessionStore(), new TargetResolver(), new VersionDetector(), new DefaultFileIOProvider());
   }
 
   RootCommand(
       SessionStore sessionStore,
       TargetResolver targetResolver,
       VersionDetector versionDetector,
-      LocalFileIOProvider fileIOProvider) {
+      FileIOProvider fileIOProvider) {
     this.sessionStore = Objects.requireNonNull(sessionStore, "sessionStore");
     this.targetResolver = Objects.requireNonNull(targetResolver, "targetResolver");
     this.versionDetector = Objects.requireNonNull(versionDetector, "versionDetector");
@@ -75,7 +79,7 @@ public final class RootCommand implements Runnable {
         new SessionStore(sessionFile),
         new TargetResolver(),
         new VersionDetector(),
-        new LocalFileIOProvider());
+        new DefaultFileIOProvider());
   }
 
   public SessionStore sessionStore() {
@@ -95,11 +99,18 @@ public final class RootCommand implements Runnable {
   }
 
   public TableContext requireCurrentTable() {
+    return requireCurrentTable(StorageOptions.defaults(), false);
+  }
+
+  public TableContext requireCurrentTable(
+      StorageOptions overrideOptions, boolean hasExplicitOverrides) {
     SessionState sessionState = requireCurrentSession();
     if (sessionState.currentMetadataFile() == null) {
       throw new IllegalStateException("Current target is not a table. Use open <table> or use table <name> first.");
     }
-    return tableLoader.load(sessionState);
+    StorageOptions storageOptions =
+        effectiveStorageOptions(null, overrideOptions, hasExplicitOverrides);
+    return loadResolvedTable(requireCurrentResolvedTarget(overrideOptions, hasExplicitOverrides), storageOptions);
   }
 
   public SessionState requireCurrentSession() {
@@ -107,38 +118,63 @@ public final class RootCommand implements Runnable {
   }
 
   public ResolvedTarget requireCurrentResolvedTarget() {
-    SessionState sessionState = requireCurrentSession();
-    if (sessionState.currentMetadataFile() != null) {
-      return targetResolver.resolve(Paths.get(sessionState.currentMetadataFile()));
-    }
-    return targetResolver.resolve(Paths.get(sessionState.metadataRoot()));
+    return requireCurrentResolvedTarget(StorageOptions.defaults(), false);
   }
 
-  public TableContext loadTable(Path path) {
-    return loadResolvedTable(targetResolver.resolve(path));
+  public ResolvedTarget requireCurrentResolvedTarget(
+      StorageOptions overrideOptions, boolean hasExplicitOverrides) {
+    SessionState sessionState = requireCurrentSession();
+    StorageOptions storageOptions =
+        effectiveStorageOptions(null, overrideOptions, hasExplicitOverrides);
+    if (sessionState.currentMetadataFile() != null) {
+      return targetResolver.resolve(sessionState.currentMetadataFile(), storageOptions);
+    }
+    return targetResolver.resolve(sessionState.metadataRoot(), storageOptions);
+  }
+
+  public TableContext loadTable(String path, StorageOptions storageOptions) {
+    return loadResolvedTable(targetResolver.resolve(path, storageOptions), storageOptions);
   }
 
   public TableContext loadResolvedTable(ResolvedTarget target) {
-    SessionState sessionState = newSessionState(target, null);
+    return loadResolvedTable(target, StorageOptions.defaults());
+  }
+
+  public TableContext loadResolvedTable(ResolvedTarget target, StorageOptions storageOptions) {
+    SessionState sessionState = newSessionState(target, null, storageOptions);
     if (sessionState.currentMetadataFile() == null) {
       throw new IllegalArgumentException("Target is not a table: " + target.inputPath());
     }
     return tableLoader.load(sessionState);
   }
 
-  public Path resolveWarehousePath(Path overridePath) {
+  public String resolveWarehousePath(String overridePath, StorageOptions overrideOptions) {
     if (overridePath != null) {
-      return overridePath.toAbsolutePath().normalize();
+      return targetResolver.explorerFor(overridePath, overrideOptions).normalize(overridePath);
     }
 
     SessionState sessionState = requireCurrentSession();
     if (sessionState.warehouseRoot() != null) {
-      return Paths.get(sessionState.warehouseRoot()).toAbsolutePath().normalize();
+      return sessionState.warehouseRoot();
     }
     if (sessionState.targetType() == com.wayblink.iceberg.discovery.ResolvedTargetType.WAREHOUSE) {
-      return Paths.get(sessionState.metadataRoot()).toAbsolutePath().normalize();
+      return sessionState.metadataRoot();
     }
     throw new IllegalStateException("No current warehouse. Run open <warehouse-path> first or pass --path.");
+  }
+
+  StorageOptions effectiveStorageOptions(
+      String overridePath, StorageOptions overrideOptions, boolean hasExplicitOverrides) {
+    StorageOptions resolvedOverride = overrideOptions == null ? StorageOptions.defaults() : overrideOptions;
+    if (overridePath != null) {
+      return resolvedOverride;
+    }
+
+    SessionState sessionState = requireCurrentSession();
+    if (hasExplicitOverrides) {
+      return resolvedOverride.overlayOn(sessionState.storageOptions());
+    }
+    return sessionState.storageOptions();
   }
 
   public void printSessionState(SessionState state, PrintWriter out) {
@@ -157,14 +193,35 @@ public final class RootCommand implements Runnable {
     if (state.warehouseRoot() != null) {
       out.println("warehouse-root: " + state.warehouseRoot());
     }
+    out.println("storage-backend: " + state.storageBackend());
+    if (state.hadoopConfDir() != null) {
+      out.println("hadoop-conf-dir: " + state.hadoopConfDir());
+    }
+    if (state.s3Endpoint() != null) {
+      out.println("s3-endpoint: " + state.s3Endpoint());
+    }
+    if (state.s3Region() != null) {
+      out.println("s3-region: " + state.s3Region());
+    }
+    if (state.s3PathStyle()) {
+      out.println("s3-path-style: true");
+    }
+    if (state.s3CredentialsProvider() != null) {
+      out.println("s3-credentials-provider: " + state.s3CredentialsProvider());
+    }
   }
 
   public SessionState newSessionState(ResolvedTarget target, String warehouseRoot) {
+    return newSessionState(target, warehouseRoot, StorageOptions.defaults());
+  }
+
+  public SessionState newSessionState(
+      ResolvedTarget target, String warehouseRoot, StorageOptions storageOptions) {
     Integer formatVersion = target.currentMetadataFile() == null
         ? null
-        : versionDetector.detect(target.currentMetadataFile());
+        : versionDetector.detect(target.currentMetadataFile(), storageOptions);
     long nowMillis = System.currentTimeMillis();
-    return SessionState.fromResolvedTarget(target, formatVersion, nowMillis, warehouseRoot);
+    return SessionState.fromResolvedTarget(target, formatVersion, nowMillis, warehouseRoot, storageOptions);
   }
 
   private static SessionStore defaultSessionStore() {

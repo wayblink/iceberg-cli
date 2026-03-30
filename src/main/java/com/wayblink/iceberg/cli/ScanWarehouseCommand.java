@@ -9,7 +9,7 @@ import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
-import java.nio.file.Path;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,10 +44,13 @@ public final class ScanWarehouseCommand implements Callable<Integer> {
   private ScanCommand scanCommand;
 
   @Option(names = "--path", description = "Warehouse root path. Defaults to the current warehouse session.")
-  private Path path;
+  private String path;
 
   @Mixin
   private RenderOptions renderOptions;
+
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
 
   @Spec
   private CommandSpec spec;
@@ -55,22 +58,24 @@ public final class ScanWarehouseCommand implements Callable<Integer> {
   @Override
   public Integer call() {
     RootCommand rootCommand = scanCommand.rootCommand();
-    Path warehousePath = rootCommand.resolveWarehousePath(path);
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
+    String warehousePath = rootCommand.resolveWarehousePath(path, storageOptions);
     List<Map<String, Object>> rows = new ArrayList<>();
-    for (ResolvedTarget target : rootCommand.warehouseScanner().scan(warehousePath)) {
+    for (ResolvedTarget target : rootCommand.warehouseScanner().scan(warehousePath, storageOptions)) {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("targetType", target.type().name());
-      row.put("inputPath", target.inputPath().toString());
-      row.put("tableRoot", target.tableRoot() == null ? null : target.tableRoot().toString());
-      row.put("metadataRoot", target.metadataRoot().toString());
-      row.put("currentMetadataFile", target.currentMetadataFile() == null ? null : target.currentMetadataFile().toString());
-      row.put("formatVersion", rootCommand.versionDetector().detect(target.currentMetadataFile()));
+      row.put("inputPath", target.inputPath());
+      row.put("tableRoot", target.tableRoot());
+      row.put("metadataRoot", target.metadataRoot());
+      row.put("currentMetadataFile", target.currentMetadataFile());
+      row.put("formatVersion", rootCommand.versionDetector().detect(target.currentMetadataFile(), storageOptions));
       rows.add(row);
     }
 
     AnalysisResult result = new AnalysisResult(
         "scan-warehouse",
-        warehousePath.toString(),
+        warehousePath,
         null,
         new AnalysisRequest(AnalysisScope.CURRENT, AnalysisGroupBy.TABLE, AnalysisPrecision.SUMMARY),
         rows);

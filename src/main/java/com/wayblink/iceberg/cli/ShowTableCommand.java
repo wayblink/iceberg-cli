@@ -71,7 +71,7 @@ public final class ShowTableCommand implements Callable<Integer> {
     summary.putAll(metrics);
     return payloadBuilder.payload(
         "show-table",
-        tableContext.tableRoot().toString(),
+        tableContext.tableRoot(),
         tableContext.metadata().formatVersion(),
         Map.of(),
         summary,

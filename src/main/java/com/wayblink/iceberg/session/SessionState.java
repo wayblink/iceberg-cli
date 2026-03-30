@@ -2,6 +2,8 @@ package com.wayblink.iceberg.session;
 
 import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.discovery.ResolvedTargetType;
+import com.wayblink.iceberg.storage.StorageBackend;
+import com.wayblink.iceberg.storage.StorageOptions;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 
 @JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
@@ -16,6 +18,12 @@ public final class SessionState {
   private long openedAtMillis;
   private long updatedAtMillis;
   private String warehouseRoot;
+  private StorageBackend storageBackend;
+  private String hadoopConfDir;
+  private String s3Endpoint;
+  private String s3Region;
+  private boolean s3PathStyle;
+  private String s3CredentialsProvider;
 
   public SessionState() {
   }
@@ -29,7 +37,13 @@ public final class SessionState {
       Integer formatVersion,
       long openedAtMillis,
       long updatedAtMillis,
-      String warehouseRoot) {
+      String warehouseRoot,
+      StorageBackend storageBackend,
+      String hadoopConfDir,
+      String s3Endpoint,
+      String s3Region,
+      boolean s3PathStyle,
+      String s3CredentialsProvider) {
     this.inputPath = inputPath;
     this.targetType = targetType;
     this.tableRoot = tableRoot;
@@ -39,23 +53,36 @@ public final class SessionState {
     this.openedAtMillis = openedAtMillis;
     this.updatedAtMillis = updatedAtMillis;
     this.warehouseRoot = warehouseRoot;
+    this.storageBackend = storageBackend;
+    this.hadoopConfDir = hadoopConfDir;
+    this.s3Endpoint = s3Endpoint;
+    this.s3Region = s3Region;
+    this.s3PathStyle = s3PathStyle;
+    this.s3CredentialsProvider = s3CredentialsProvider;
   }
 
   public static SessionState fromResolvedTarget(
       ResolvedTarget target,
       Integer formatVersion,
       long nowMillis,
-      String warehouseRoot) {
+      String warehouseRoot,
+      StorageOptions storageOptions) {
     return new SessionState(
-        target.inputPath().toString(),
+        target.inputPath(),
         target.type(),
-        target.tableRoot() == null ? null : target.tableRoot().toString(),
-        target.metadataRoot().toString(),
-        target.currentMetadataFile() == null ? null : target.currentMetadataFile().toString(),
+        target.tableRoot(),
+        target.metadataRoot(),
+        target.currentMetadataFile(),
         formatVersion,
         nowMillis,
         nowMillis,
-        warehouseRoot);
+        warehouseRoot,
+        storageOptions.resolveBackend(target.inputPath()),
+        storageOptions.hadoopConfDir(),
+        storageOptions.s3Endpoint(),
+        storageOptions.s3Region(),
+        storageOptions.s3PathStyle(),
+        storageOptions.s3CredentialsProvider());
   }
 
   public String inputPath() {
@@ -128,5 +155,64 @@ public final class SessionState {
 
   public void setWarehouseRoot(String warehouseRoot) {
     this.warehouseRoot = warehouseRoot;
+  }
+
+  public StorageBackend storageBackend() {
+    return storageBackend;
+  }
+
+  public void setStorageBackend(StorageBackend storageBackend) {
+    this.storageBackend = storageBackend;
+  }
+
+  public String hadoopConfDir() {
+    return hadoopConfDir;
+  }
+
+  public void setHadoopConfDir(String hadoopConfDir) {
+    this.hadoopConfDir = hadoopConfDir;
+  }
+
+  public String s3Endpoint() {
+    return s3Endpoint;
+  }
+
+  public void setS3Endpoint(String s3Endpoint) {
+    this.s3Endpoint = s3Endpoint;
+  }
+
+  public String s3Region() {
+    return s3Region;
+  }
+
+  public void setS3Region(String s3Region) {
+    this.s3Region = s3Region;
+  }
+
+  public boolean s3PathStyle() {
+    return s3PathStyle;
+  }
+
+  public void setS3PathStyle(boolean s3PathStyle) {
+    this.s3PathStyle = s3PathStyle;
+  }
+
+  public String s3CredentialsProvider() {
+    return s3CredentialsProvider;
+  }
+
+  public void setS3CredentialsProvider(String s3CredentialsProvider) {
+    this.s3CredentialsProvider = s3CredentialsProvider;
+  }
+
+  public StorageOptions storageOptions() {
+    return StorageOptions.builder()
+        .backend(storageBackend)
+        .hadoopConfDir(hadoopConfDir)
+        .s3Endpoint(s3Endpoint)
+        .s3Region(s3Region)
+        .s3PathStyle(s3PathStyle)
+        .s3CredentialsProvider(s3CredentialsProvider)
+        .build();
   }
 }

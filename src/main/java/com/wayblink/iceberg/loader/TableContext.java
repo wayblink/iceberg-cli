@@ -1,23 +1,22 @@
 package com.wayblink.iceberg.loader;
 
-import java.nio.file.Path;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.io.FileIO;
 
 public final class TableContext {
 
-  private final Path tableRoot;
-  private final Path metadataRoot;
-  private final Path currentMetadataFile;
+  private final String tableRoot;
+  private final String metadataRoot;
+  private final String currentMetadataFile;
   private final FileIO fileIO;
   private final TableMetadata metadata;
   private final Table table;
 
   public TableContext(
-      Path tableRoot,
-      Path metadataRoot,
-      Path currentMetadataFile,
+      String tableRoot,
+      String metadataRoot,
+      String currentMetadataFile,
       FileIO fileIO,
       TableMetadata metadata,
       Table table) {
@@ -29,15 +28,15 @@ public final class TableContext {
     this.table = table;
   }
 
-  public Path tableRoot() {
+  public String tableRoot() {
     return tableRoot;
   }
 
-  public Path metadataRoot() {
+  public String metadataRoot() {
     return metadataRoot;
   }
 
-  public Path currentMetadataFile() {
+  public String currentMetadataFile() {
     return currentMetadataFile;
   }
 

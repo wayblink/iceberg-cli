@@ -2,14 +2,38 @@
 
 [中文文档](./README.zh-CN.md)
 
-`iceberg-inspect` is a local Iceberg metadata inspection CLI. The current version focuses on local paths, detects V1/V2/V3 metadata automatically, supports a session-based `open` workflow, and provides structural inspection and basic statistics at the table, metadata-version, snapshot, and partition levels.
+`iceberg-inspect` is an Iceberg metadata inspection CLI for local paths, HDFS, and S3A. It detects V1/V2/V3 metadata automatically, supports a session-based `open` workflow, and provides structural inspection and basic statistics at the table, metadata-version, snapshot, and partition levels.
+
+## Quick Start
+
+Build the executable jar:
+
+```bash
+mvn -s .mvn/settings.xml package
+```
+
+Use the bundled launcher:
+
+```bash
+./bin/iceberg-inspect --help
+```
+
+Open a local table and reuse the current session:
+
+```bash
+iceberg-inspect open /data/warehouse/db/orders/metadata
+iceberg-inspect current
+iceberg-inspect show table
+iceberg-inspect stat table --json
+```
 
 ## Capabilities
 
 - Open a table `metadata/` directory, a single `*.metadata.json` file, or a warehouse root
 - Cache the current target in a local session so subsequent commands can omit `--path`
 - Detect the table `format-version` automatically
-- Inspect local copies of metadata originally referenced from S3 or HDFS, as long as the referenced metadata and manifest files are mirrored locally
+- Read tables from the local filesystem, HDFS, and S3A through Hadoop `FileIO`
+- Continue to inspect local copies of metadata originally referenced from S3 or HDFS, as long as the referenced metadata and manifest files are mirrored locally
 - Show table structure, snapshots, metadata log, manifests, and partitions
 - Compute table-level, metadata-version-level, snapshot-level, and partition-level statistics
 - Scan and discover multiple tables under a warehouse
@@ -48,18 +72,6 @@ Notes:
 - `rows`: detail records
 - Local filesystem paths are always serialized as plain strings, not `file:///...` URIs
 
-## Project Layout
-
-```text
-iceberg-cli/
-├── .mvn/
-├── bin/
-├── pom.xml
-├── src/
-├── README.md
-└── README.zh-CN.md
-```
-
 Run commands from the `iceberg-cli/` directory by default.
 
 ## Build And Test
@@ -80,6 +92,16 @@ Run full verification:
 ```bash
 mvn -s .mvn/settings.xml verify
 ```
+
+`verify` now includes integration tests for:
+
+- HDFS via `MiniDFSCluster`
+- S3A via MinIO and Testcontainers
+
+Notes:
+
+- The S3A integration test is skipped automatically when Docker is unavailable.
+- If your environment blocks Maven dependency downloads, run `verify` once in a network-enabled environment first.
 
 Build the executable fat jar:
 
@@ -192,10 +214,85 @@ iceberg-inspect use table db/table_a
 iceberg-inspect stat warehouse --group-by table
 ```
 
+## Storage Backends
+
+`iceberg-inspect` now supports three storage backends:
+
+- Local filesystem: explicit local paths or paths without a URI scheme
+- HDFS: `hdfs://...`, optionally combined with `--fs hdfs --hadoop-conf-dir /etc/hadoop/conf`
+- S3A: `s3a://...`, optionally combined with `--fs s3a --s3-endpoint ... --s3-region ... --s3-path-style`
+
+Notes:
+
+- `--fs` is optional when the path already has a supported URI scheme.
+- `open` persists the current storage settings into the session, so follow-up `show`, `scan`, and `stat` commands can omit both `--path` and storage flags.
+- `s3://` is intentionally rejected. Use `s3a://` so Hadoop and Iceberg resolve the correct filesystem implementation.
+
+## HDFS Usage
+
+Use HDFS when your Iceberg metadata and manifest files are stored behind Hadoop `FileSystem`.
+
+Prerequisites:
+
+- The target path should use the `hdfs://` scheme.
+- `core-site.xml` and `hdfs-site.xml` should be available locally.
+- Pass `--hadoop-conf-dir` when the required Hadoop client configuration is not already available from the environment.
+
+Open a table from HDFS:
+
+```bash
+iceberg-inspect open hdfs://nameservice1/warehouse/db/table/metadata \
+  --fs hdfs \
+  --hadoop-conf-dir /etc/hadoop/conf
+```
+
+Inspect the current session and basic structure:
+
+```bash
+iceberg-inspect current
+iceberg-inspect show table
+iceberg-inspect show snapshots
+iceberg-inspect show manifests --limit 10
+```
+
+Analyze statistics without repeating storage flags:
+
+```bash
+iceberg-inspect stat table
+iceberg-inspect stat table --scope history --group-by snapshot --json
+iceberg-inspect stat table --scope history --group-by partition --json
+```
+
+Open an HDFS warehouse and scan multiple tables:
+
+```bash
+iceberg-inspect open hdfs://nameservice1/warehouse \
+  --fs hdfs \
+  --hadoop-conf-dir /etc/hadoop/conf
+iceberg-inspect scan warehouse --json
+iceberg-inspect use table db/orders
+iceberg-inspect stat table
+```
+
+Notes:
+
+- After `open`, the HDFS backend and Hadoop config directory are stored in the local session.
+- If the path already starts with `hdfs://`, `--fs hdfs` is optional; keeping it can make scripts more explicit.
+- If name service resolution or HA settings fail, check that the selected `--hadoop-conf-dir` contains the correct cluster config.
+
+## S3A Usage
+
+Open a table from S3A or MinIO:
+
+```bash
+iceberg-inspect open s3a://warehouse-bucket/db/table/metadata \
+  --fs s3a \
+  --s3-endpoint http://minio:9000 \
+  --s3-region us-east-1 \
+  --s3-path-style
+iceberg-inspect stat table --json
+```
+
 ## Git
 
 `iceberg-cli/` can be maintained as an independent git repository.
-
-## Scope
-
-The current version only supports the local filesystem. The next step is to extend the existing `FileIO` abstraction for HDFS and S3.

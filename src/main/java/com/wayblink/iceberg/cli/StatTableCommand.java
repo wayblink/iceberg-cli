@@ -10,7 +10,7 @@ import com.wayblink.iceberg.loader.TableContext;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
-import java.nio.file.Path;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -43,7 +43,7 @@ public final class StatTableCommand implements Callable<Integer> {
   private StatCommand statCommand;
 
   @Option(names = "--path", description = "Path to a table metadata directory or metadata file.")
-  private Path path;
+  private String path;
 
   @Option(
       names = "--scope",
@@ -60,6 +60,9 @@ public final class StatTableCommand implements Callable<Integer> {
   @Mixin
   private RenderOptions renderOptions;
 
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
+
   @Option(names = "--mode", defaultValue = "auto", description = "Traversal mode: auto, summary, or detail.")
   private String mode;
 
@@ -69,7 +72,11 @@ public final class StatTableCommand implements Callable<Integer> {
   @Override
   public Integer call() {
     RootCommand rootCommand = statCommand.rootCommand();
-    TableContext tableContext = path == null ? rootCommand.requireCurrentTable() : rootCommand.loadTable(path);
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
+    TableContext tableContext = path == null
+        ? rootCommand.requireCurrentTable(storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides())
+        : rootCommand.loadTable(path, storageOptions);
     AnalysisRequest request = new AnalysisRequest(
         AnalysisScope.parse(scope),
         AnalysisGroupBy.parse(groupBy),

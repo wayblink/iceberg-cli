@@ -8,6 +8,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,6 +17,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileFormat;
@@ -32,6 +35,8 @@ import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.hadoop.HadoopFileIO;
 import org.apache.iceberg.hadoop.HadoopTables;
 import org.apache.iceberg.types.Types;
+import com.wayblink.iceberg.storage.StorageBackend;
+import com.wayblink.iceberg.storage.StoragePaths;
 
 public final class IcebergTableFixtures {
 
@@ -90,38 +95,50 @@ public final class IcebergTableFixtures {
   }
 
   public static Path createPartitionedTable(Path warehouseRoot) throws IOException {
-    Path tablePath = warehouseRoot.resolve("table_" + TABLE_COUNTER.incrementAndGet());
-    HadoopTables tables = new HadoopTables(new Configuration());
+    String tableLocation = createPartitionedTable(new Configuration(), warehouseRoot.toString(), StorageBackend.LOCAL);
+    return Paths.get(tableLocation);
+  }
+
+  public static String createPartitionedTable(
+      Configuration configuration,
+      String warehouseRoot,
+      StorageBackend backend)
+      throws IOException {
+    String tableLocation = StoragePaths.resolve(
+        warehouseRoot,
+        "table_" + TABLE_COUNTER.incrementAndGet(),
+        backend);
+    HadoopTables tables = new HadoopTables(configuration);
     Table table = tables.create(
         PARTITIONED_SCHEMA,
         PARTITIONED_SPEC,
         SortOrder.unsorted(),
         Map.of(TableProperties.FORMAT_VERSION, "2"),
-        tablePath.toString());
+        tableLocation);
 
-    appendFile(table, tablePath, "category=books", "books-0001.parquet", 128L, 10L);
-    appendFile(table, tablePath, "category=books", "books-0002.parquet", 256L, 12L);
-    appendFile(table, tablePath, "category=games", "games-0001.parquet", 512L, 20L);
-    return tablePath;
+    appendFile(configuration, backend, table, tableLocation, "category=books", "books-0001.parquet", 128L, 10L);
+    appendFile(configuration, backend, table, tableLocation, "category=books", "books-0002.parquet", 256L, 12L);
+    appendFile(configuration, backend, table, tableLocation, "category=games", "games-0001.parquet", 512L, 20L);
+    return tableLocation;
   }
 
   private static void appendFile(
+      Configuration configuration,
+      StorageBackend backend,
       Table table,
-      Path tablePath,
+      String tableLocation,
       String partitionPath,
       String fileName,
       long fileSizeInBytes,
       long recordCount)
       throws IOException {
-    Path partitionDir = FixturePaths.dataDir(tablePath).resolve(partitionPath);
-    Files.createDirectories(partitionDir);
-    Path dataFilePath = partitionDir.resolve(fileName);
-    if (Files.notExists(dataFilePath)) {
-      Files.createFile(dataFilePath);
-    }
+    String dataRoot = StoragePaths.resolve(tableLocation, "data", backend);
+    String partitionDir = StoragePaths.resolve(dataRoot, partitionPath, backend);
+    String dataFileLocation = StoragePaths.resolve(partitionDir, fileName, backend);
+    createEmptyFile(configuration, dataFileLocation);
 
     DataFile dataFile = DataFiles.builder(table.spec())
-        .withPath(dataFilePath.toString())
+        .withPath(dataFileLocation)
         .withFormat(FileFormat.PARQUET)
         .withPartitionPath(partitionPath)
         .withFileSizeInBytes(fileSizeInBytes)
@@ -259,6 +276,22 @@ public final class IcebergTableFixtures {
 
     public String firstManifestName() {
       return firstManifestName;
+    }
+
+  }
+
+  private static void createEmptyFile(Configuration configuration, String location) throws IOException {
+    org.apache.hadoop.fs.Path filePath = new org.apache.hadoop.fs.Path(location);
+    FileSystem fileSystem = filePath.getFileSystem(configuration);
+    org.apache.hadoop.fs.Path parent = filePath.getParent();
+    if (parent != null) {
+      fileSystem.mkdirs(parent);
+    }
+    if (fileSystem.exists(filePath)) {
+      return;
+    }
+    try (FSDataOutputStream output = fileSystem.create(filePath, false)) {
+      output.write(new byte[0]);
     }
   }
 }

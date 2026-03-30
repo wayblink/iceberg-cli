@@ -3,8 +3,8 @@ package com.wayblink.iceberg.cli;
 import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.session.SessionResolver;
 import com.wayblink.iceberg.session.SessionState;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import com.wayblink.iceberg.storage.StorageBackend;
+import com.wayblink.iceberg.storage.StoragePaths;
 import java.util.concurrent.Callable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
@@ -46,26 +46,27 @@ public final class UseTableCommand implements Callable<Integer> {
       throw new IllegalStateException("Current target is not a warehouse. Run open <warehouse-path> first.");
     }
 
-    Path warehousePath = Paths.get(warehouseRoot);
-    ResolvedTarget selectedTable = rootCommand.warehouseScanner().scan(warehousePath).stream()
-        .filter(target -> matchesTable(target, warehousePath))
+    StorageBackend backend = currentState.storageOptions().resolveBackend(warehouseRoot);
+    ResolvedTarget selectedTable =
+        rootCommand.warehouseScanner().scan(warehouseRoot, currentState.storageOptions()).stream()
+            .filter(target -> matchesTable(target, warehouseRoot, backend))
         .findFirst()
         .orElseThrow(() -> new IllegalStateException("Table not found under warehouse: " + tableName));
 
-    SessionState nextState = rootCommand.newSessionState(selectedTable, warehouseRoot);
+    SessionState nextState = rootCommand.newSessionState(selectedTable, warehouseRoot, currentState.storageOptions());
     rootCommand.sessionStore().save(nextState);
     rootCommand.printSessionState(nextState, spec.commandLine().getOut());
     return 0;
   }
 
-  private boolean matchesTable(ResolvedTarget target, Path warehousePath) {
-    Path tableRoot = target.tableRoot();
+  private boolean matchesTable(ResolvedTarget target, String warehouseRoot, StorageBackend backend) {
+    String tableRoot = target.tableRoot();
     if (tableRoot == null) {
       return false;
     }
 
-    String relativePath = warehousePath.relativize(tableRoot).toString();
-    String leafName = tableRoot.getFileName().toString();
+    String relativePath = StoragePaths.relativize(warehouseRoot, tableRoot, backend);
+    String leafName = StoragePaths.fileName(tableRoot, backend);
     return tableName.equals(relativePath) || tableName.equals(leafName);
   }
 }

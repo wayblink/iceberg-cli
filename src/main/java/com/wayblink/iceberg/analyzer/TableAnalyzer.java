@@ -46,7 +46,7 @@ public final class TableAnalyzer {
     }
     return new AnalysisResult(
         "table",
-        tableContext.tableRoot().toString(),
+        tableContext.tableRoot(),
         tableContext.metadata().formatVersion(),
         request,
         rows);
@@ -74,7 +74,7 @@ public final class TableAnalyzer {
         : traversalService.summarizeDataPartitions(tableContext, currentSnapshot).size();
 
     Map<String, Object> row = new LinkedHashMap<>();
-    row.put("tableRoot", tableContext.tableRoot().toString());
+    row.put("tableRoot", tableContext.tableRoot());
     row.put("formatVersion", tableContext.metadata().formatVersion());
     row.put("metadataVersionCount", tableContext.metadata().previousFiles().size() + 1L);
     row.put("snapshotVersionCount", tableContext.metadata().snapshots().size());

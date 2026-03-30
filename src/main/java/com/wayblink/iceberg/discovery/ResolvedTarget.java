@@ -1,22 +1,21 @@
 package com.wayblink.iceberg.discovery;
 
-import java.nio.file.Path;
 import java.util.Objects;
 
 public final class ResolvedTarget {
 
-  private final Path inputPath;
+  private final String inputPath;
   private final ResolvedTargetType type;
-  private final Path tableRoot;
-  private final Path metadataRoot;
-  private final Path currentMetadataFile;
+  private final String tableRoot;
+  private final String metadataRoot;
+  private final String currentMetadataFile;
 
   public ResolvedTarget(
-      Path inputPath,
+      String inputPath,
       ResolvedTargetType type,
-      Path tableRoot,
-      Path metadataRoot,
-      Path currentMetadataFile) {
+      String tableRoot,
+      String metadataRoot,
+      String currentMetadataFile) {
     this.inputPath = Objects.requireNonNull(inputPath, "inputPath");
     this.type = Objects.requireNonNull(type, "type");
     this.tableRoot = tableRoot;
@@ -24,7 +23,7 @@ public final class ResolvedTarget {
     this.currentMetadataFile = currentMetadataFile;
   }
 
-  public Path inputPath() {
+  public String inputPath() {
     return inputPath;
   }
 
@@ -32,15 +31,15 @@ public final class ResolvedTarget {
     return type;
   }
 
-  public Path tableRoot() {
+  public String tableRoot() {
     return tableRoot;
   }
 
-  public Path metadataRoot() {
+  public String metadataRoot() {
     return metadataRoot;
   }
 
-  public Path currentMetadataFile() {
+  public String currentMetadataFile() {
     return currentMetadataFile;
   }
 }

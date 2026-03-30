@@ -11,7 +11,7 @@ import com.wayblink.iceberg.loader.TableContext;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
-import java.nio.file.Path;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,7 +47,7 @@ public final class StatWarehouseCommand implements Callable<Integer> {
   private StatCommand statCommand;
 
   @Option(names = "--path", description = "Warehouse root path. Defaults to the current warehouse session.")
-  private Path path;
+  private String path;
 
   @Option(names = "--scope", defaultValue = "current", description = "Analysis scope: current, history, or all.")
   private String scope;
@@ -58,6 +58,9 @@ public final class StatWarehouseCommand implements Callable<Integer> {
   @Mixin
   private RenderOptions renderOptions;
 
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
+
   @Option(names = "--mode", defaultValue = "auto", description = "Traversal mode: auto, summary, or detail.")
   private String mode;
 
@@ -67,25 +70,27 @@ public final class StatWarehouseCommand implements Callable<Integer> {
   @Override
   public Integer call() {
     RootCommand rootCommand = statCommand.rootCommand();
-    Path warehousePath = rootCommand.resolveWarehousePath(path);
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
+    String warehousePath = rootCommand.resolveWarehousePath(path, storageOptions);
     AnalysisRequest request = new AnalysisRequest(
         AnalysisScope.parse(scope),
         AnalysisGroupBy.parse(groupBy),
         AnalysisPrecision.parse(mode));
 
     List<Map<String, Object>> rows = new ArrayList<>();
-    for (ResolvedTarget target : rootCommand.warehouseScanner().scan(warehousePath)) {
-      TableContext tableContext = rootCommand.loadResolvedTable(target);
+    for (ResolvedTarget target : rootCommand.warehouseScanner().scan(warehousePath, storageOptions)) {
+      TableContext tableContext = rootCommand.loadResolvedTable(target, storageOptions);
       AnalysisResult tableResult = tableAnalyzer.analyzeTable(tableContext, request);
       for (Map<String, Object> row : tableResult.getRows()) {
         Map<String, Object> withTable = new LinkedHashMap<>();
-        withTable.put("tableRoot", tableContext.tableRoot().toString());
+        withTable.put("tableRoot", tableContext.tableRoot());
         withTable.putAll(row);
         rows.add(withTable);
       }
     }
 
-    AnalysisResult result = new AnalysisResult("warehouse", warehousePath.toString(), null, request, rows);
+    AnalysisResult result = new AnalysisResult("warehouse", warehousePath, null, request, rows);
     String output = renderOptions.resolve() == RenderFormat.JSON
         ? jsonRenderer.render(result)
         : tableRenderer.render(result);
