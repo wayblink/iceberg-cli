@@ -5,6 +5,7 @@ import com.wayblink.iceberg.render.JsonPayloadBuilder;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -26,14 +27,16 @@ import picocli.CommandLine.Spec;
     description = {
         "Show manifests for the current snapshot or a specific snapshot.",
         "This is useful when you need to inspect manifest paths, content type, and added or deleted file counts.",
-        "Rows are sorted by manifest path by default; use --sort-by and --limit to focus the output."
+        "Rows are sorted by manifest path by default; use --sort-by and --limit to focus the output.",
+        "If --path is omitted, the current table session is used."
     },
     optionListHeading = "%nOptions:%n",
     footerHeading = "%nExamples:%n",
     footer = {
         "  iceberg-inspect show manifests",
         "  iceberg-inspect show manifests --snapshot-id 123456789",
-        "  iceberg-inspect show manifests --json --limit 10 --sort-by deleted-files"
+        "  iceberg-inspect show manifests --json --limit 10 --sort-by deleted-files",
+        "  iceberg-inspect show manifests --path /warehouse/db/orders/metadata --snapshot-id 123456789"
     })
 public final class ShowManifestsCommand implements Callable<Integer> {
 
@@ -43,6 +46,11 @@ public final class ShowManifestsCommand implements Callable<Integer> {
 
   @ParentCommand
   private ShowCommand showCommand;
+
+  @Option(
+      names = "--path",
+      description = "Path to a table metadata directory, metadata file, or table root.")
+  private String path;
 
   @Option(names = "--snapshot-id", description = "Specific snapshot ID to inspect.")
   private Long snapshotId;
@@ -59,13 +67,20 @@ public final class ShowManifestsCommand implements Callable<Integer> {
   @Mixin
   private RenderOptions renderOptions;
 
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
+
   @Spec
   private CommandSpec spec;
 
   @Override
   public Integer call() {
     RootCommand rootCommand = showCommand.rootCommand();
-    TableContext tableContext = rootCommand.requireCurrentTable();
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
+    TableContext tableContext = path == null
+        ? rootCommand.requireCurrentTable(storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides())
+        : rootCommand.loadTable(path, storageOptions);
     Snapshot snapshot = snapshotId == null
         ? tableContext.table().currentSnapshot()
         : tableContext.table().snapshot(snapshotId);

@@ -5,6 +5,7 @@ import com.wayblink.iceberg.render.JsonPayloadBuilder;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,11 +19,16 @@ import picocli.CommandLine.Spec;
 @Command(
     name = "table",
     mixinStandardHelpOptions = true,
-    description = "Show a summary of the current table, including metadata location, format version, and basic counts.",
+    description = {
+        "Show a summary of the current table, including metadata location, format version, and basic counts.",
+        "If --path is omitted, the current table session is used."
+    },
     optionListHeading = "%nOptions:%n",
     footerHeading = "%nExamples:%n",
     footer = {
-        "  iceberg-inspect show table"
+        "  iceberg-inspect show table",
+        "  iceberg-inspect show table --path /warehouse/db/orders/metadata",
+        "  iceberg-inspect show table --path hdfs://nameservice1/warehouse/db/orders/metadata --fs hdfs --hadoop-conf-dir /etc/hadoop/conf"
     })
 public final class ShowTableCommand implements Callable<Integer> {
 
@@ -33,8 +39,16 @@ public final class ShowTableCommand implements Callable<Integer> {
   @ParentCommand
   private ShowCommand showCommand;
 
+  @picocli.CommandLine.Option(
+      names = "--path",
+      description = "Path to a table metadata directory, metadata file, or table root.")
+  private String path;
+
   @Mixin
   private RenderOptions renderOptions;
+
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
 
   @Spec
   private CommandSpec spec;
@@ -42,7 +56,11 @@ public final class ShowTableCommand implements Callable<Integer> {
   @Override
   public Integer call() {
     RootCommand rootCommand = showCommand.rootCommand();
-    TableContext tableContext = rootCommand.requireCurrentTable();
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
+    TableContext tableContext = path == null
+        ? rootCommand.requireCurrentTable(storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides())
+        : rootCommand.loadTable(path, storageOptions);
     Map<String, Object> context = new LinkedHashMap<>();
     context.put("tableRoot", tableContext.tableRoot());
     context.put("metadataRoot", tableContext.metadataRoot());

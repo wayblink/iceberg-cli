@@ -4,7 +4,6 @@ import com.wayblink.iceberg.analyzer.AnalysisGroupBy;
 import com.wayblink.iceberg.analyzer.AnalysisPrecision;
 import com.wayblink.iceberg.analyzer.AnalysisRequest;
 import com.wayblink.iceberg.analyzer.AnalysisResult;
-import com.wayblink.iceberg.analyzer.AnalysisScope;
 import com.wayblink.iceberg.analyzer.TableAnalyzer;
 import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.loader.TableContext;
@@ -35,7 +34,7 @@ import picocli.CommandLine.Spec;
     footerHeading = "%nExamples:%n",
     footer = {
         "  iceberg-inspect stat warehouse --path /warehouse",
-        "  iceberg-inspect stat warehouse --scope current --group-by table --format json"
+        "  iceberg-inspect stat warehouse --group-by table --format json"
     })
 public final class StatWarehouseCommand implements Callable<Integer> {
 
@@ -49,10 +48,7 @@ public final class StatWarehouseCommand implements Callable<Integer> {
   @Option(names = "--path", description = "Warehouse root path. Defaults to the current warehouse session.")
   private String path;
 
-  @Option(names = "--scope", defaultValue = "current", description = "Analysis scope: current, history, or all.")
-  private String scope;
-
-  @Option(names = "--group-by", defaultValue = "table", description = "Grouping: table, metadata-version, snapshot, or partition.")
+  @Option(names = "--group-by", defaultValue = "table", description = "Grouping: table, metadata-version, or partition.")
   private String groupBy;
 
   @Mixin
@@ -73,10 +69,13 @@ public final class StatWarehouseCommand implements Callable<Integer> {
     StorageOptions storageOptions =
         rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
     String warehousePath = rootCommand.resolveWarehousePath(path, storageOptions);
-    AnalysisRequest request = new AnalysisRequest(
-        AnalysisScope.parse(scope),
-        AnalysisGroupBy.parse(groupBy),
-        AnalysisPrecision.parse(mode));
+    AnalysisGroupBy resolvedGroupBy = AnalysisGroupBy.parse(groupBy);
+    if (resolvedGroupBy == AnalysisGroupBy.SNAPSHOT) {
+      throw new picocli.CommandLine.ParameterException(
+          spec.commandLine(),
+          "`stat warehouse` does not support --group-by snapshot. Inspect snapshots with `list snapshots` or `stat snapshot` on a specific table.");
+    }
+    AnalysisRequest request = new AnalysisRequest(resolvedGroupBy, AnalysisPrecision.parse(mode));
 
     List<Map<String, Object>> rows = new ArrayList<>();
     for (ResolvedTarget target : rootCommand.warehouseScanner().scan(warehousePath, storageOptions)) {

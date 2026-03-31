@@ -49,8 +49,10 @@ public final class TableRenderer {
     if (result.getFormatVersion() != null) {
       metadata.put("formatVersion", result.getFormatVersion());
     }
-    metadata.put("scope", result.getScope());
     metadata.put("groupBy", result.getGroupBy());
+    if (result.getSnapshotId() != null) {
+      metadata.put("snapshotId", result.getSnapshotId());
+    }
     if (!"auto".equals(result.getPrecision())) {
       metadata.put("mode", result.getPrecision());
     }

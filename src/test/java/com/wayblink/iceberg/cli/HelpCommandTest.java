@@ -19,7 +19,8 @@ class HelpCommandTest {
     assertTrue(result.output().contains("Description:"));
     assertTrue(result.output().contains("Use `open` once to establish a current session"));
     assertTrue(result.output().contains("Examples:"));
-    assertTrue(result.output().contains("iceberg-inspect stat table --scope all --group-by snapshot"));
+    assertTrue(result.output().contains("iceberg-inspect list snapshots"));
+    assertTrue(result.output().contains("iceberg-inspect stat snapshot --snapshot-id 123456789"));
   }
 
   @Test
@@ -28,10 +29,20 @@ class HelpCommandTest {
 
     assertEquals(0, result.exitCode());
     assertTrue(result.output().contains("Analyze the current table or a specific table path."));
-    assertTrue(result.output().contains("--scope"));
     assertTrue(result.output().contains("--format"));
     assertTrue(result.output().contains("--json"));
     assertTrue(result.output().contains("iceberg-inspect stat table --group-by partition --format json"));
+  }
+
+  @Test
+  void statSnapshotHelpHasSnapshotSelector() {
+    HelpResult result = executeHelp("stat", "snapshot", "--help");
+
+    assertEquals(0, result.exitCode());
+    assertTrue(result.output().contains("Analyze a specific snapshot for the current table or a specific table path."));
+    assertTrue(result.output().contains("--snapshot-id"));
+    assertTrue(result.output().contains("--group-by"));
+    assertTrue(result.output().contains("iceberg-inspect stat snapshot --snapshot-id 123456789"));
   }
 
   @Test

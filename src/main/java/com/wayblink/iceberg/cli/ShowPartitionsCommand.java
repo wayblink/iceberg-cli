@@ -5,6 +5,7 @@ import com.wayblink.iceberg.render.JsonPayloadBuilder;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
 import com.wayblink.iceberg.render.TableRenderer;
+import com.wayblink.iceberg.storage.StorageOptions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
@@ -28,13 +29,15 @@ import picocli.CommandLine.Spec;
     mixinStandardHelpOptions = true,
     description = {
         "Show current partition values for the table and the number of data files visible in each partition.",
-        "Rows are sorted by data file count by default; use --sort-by and --limit to control the listing."
+        "Rows are sorted by data file count by default; use --sort-by and --limit to control the listing.",
+        "If --path is omitted, the current table session is used."
     },
     optionListHeading = "%nOptions:%n",
     footerHeading = "%nExamples:%n",
     footer = {
         "  iceberg-inspect show partitions",
-        "  iceberg-inspect show partitions --json --limit 20 --sort-by partition"
+        "  iceberg-inspect show partitions --json --limit 20 --sort-by partition",
+        "  iceberg-inspect show partitions --path /warehouse/db/orders/metadata"
     })
 public final class ShowPartitionsCommand implements Callable<Integer> {
 
@@ -44,6 +47,11 @@ public final class ShowPartitionsCommand implements Callable<Integer> {
 
   @ParentCommand
   private ShowCommand showCommand;
+
+  @Option(
+      names = "--path",
+      description = "Path to a table metadata directory, metadata file, or table root.")
+  private String path;
 
   @Option(names = "--limit", description = "Maximum number of rows to show. Defaults to all rows.")
   private Integer limit;
@@ -57,13 +65,20 @@ public final class ShowPartitionsCommand implements Callable<Integer> {
   @Mixin
   private RenderOptions renderOptions;
 
+  @Mixin
+  private StorageOptionsMixin storageOptionsMixin;
+
   @Spec
   private CommandSpec spec;
 
   @Override
   public Integer call() {
     RootCommand rootCommand = showCommand.rootCommand();
-    TableContext tableContext = rootCommand.requireCurrentTable();
+    StorageOptions storageOptions =
+        rootCommand.effectiveStorageOptions(path, storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides());
+    TableContext tableContext = path == null
+        ? rootCommand.requireCurrentTable(storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides())
+        : rootCommand.loadTable(path, storageOptions);
     Map<String, Integer> partitionCounts = new LinkedHashMap<>();
 
     try (CloseableIterable<FileScanTask> tasks = tableContext.table().newScan().planFiles()) {

@@ -37,16 +37,16 @@ public final class AnalysisResult {
     return formatVersion;
   }
 
-  public String getScope() {
-    return request.scope().cliName();
-  }
-
   public String getGroupBy() {
     return request.groupBy().cliName();
   }
 
   public String getPrecision() {
     return request.precision().cliName();
+  }
+
+  public Long getSnapshotId() {
+    return request.snapshotId();
   }
 
   public List<Map<String, Object>> getRows() {

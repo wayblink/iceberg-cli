@@ -11,9 +11,11 @@ public final class JsonPayloadBuilder {
 
   public Map<String, Object> analysis(AnalysisResult result) {
     Map<String, Object> request = new LinkedHashMap<>();
-    request.put("scope", result.getScope());
     request.put("groupBy", result.getGroupBy());
     request.put("mode", result.getPrecision());
+    if (result.getSnapshotId() != null) {
+      request.put("snapshotId", result.getSnapshotId());
+    }
     return payload(
         result.getResultType(),
         result.getTarget(),

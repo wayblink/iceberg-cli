@@ -32,7 +32,7 @@ class ScanCommandsTest {
     assertEquals(0, exitCode);
     String output = stdout.toString(StandardCharsets.UTF_8);
     assertTrue(output.contains("\"target\":{\"path\":"));
-    assertTrue(output.contains("\"request\":{\"scope\":\"current\",\"groupBy\":\"table\",\"mode\":\"summary\"}"));
+    assertTrue(output.contains("\"request\":{\"groupBy\":\"table\",\"mode\":\"summary\"}"));
     assertTrue(output.contains("\"targetType\":\"TABLE_METADATA_DIR\""));
     assertTrue(output.contains("db_a"));
     assertTrue(output.contains("db_b"));

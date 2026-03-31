@@ -16,37 +16,26 @@ public final class SnapshotAnalyzer {
     this.traversalService = traversalService;
   }
 
-  public List<Map<String, Object>> analyze(TableContext tableContext, AnalysisScope scope) {
-    List<Map<String, Object>> rows = new ArrayList<>();
-    if (scope == AnalysisScope.CURRENT) {
-      Snapshot currentSnapshot = tableContext.table().currentSnapshot();
-      if (currentSnapshot != null) {
-        rows.add(rowForSnapshot(tableContext, currentSnapshot, "current"));
-      }
-      return rows;
-    }
-
+  public List<Map<String, Object>> analyze(TableContext tableContext) {
     List<Snapshot> snapshots = new ArrayList<>();
     tableContext.table().snapshots().forEach(snapshots::add);
-    snapshots.sort(Comparator.comparingLong(Snapshot::timestampMillis));
-    for (Snapshot snapshot : snapshots) {
-      rows.add(rowForSnapshot(tableContext, snapshot, "history"));
-    }
+    snapshots.sort(Comparator.comparingLong(Snapshot::timestampMillis).reversed());
 
-    if (scope == AnalysisScope.ALL) {
-      Snapshot currentSnapshot = tableContext.table().currentSnapshot();
-      if (currentSnapshot != null) {
-        rows.add(0, rowForSnapshot(tableContext, currentSnapshot, "current"));
-      }
+    List<Map<String, Object>> rows = new ArrayList<>(snapshots.size());
+    for (Snapshot snapshot : snapshots) {
+      rows.add(rowForSnapshot(tableContext, snapshot));
     }
     return rows;
   }
 
-  private Map<String, Object> rowForSnapshot(TableContext tableContext, Snapshot snapshot, String rowScope) {
+  public Map<String, Object> analyzeSnapshot(TableContext tableContext, Snapshot snapshot) {
+    return rowForSnapshot(tableContext, snapshot);
+  }
+
+  private Map<String, Object> rowForSnapshot(TableContext tableContext, Snapshot snapshot) {
     ManifestTraversalService.FileMetrics dataMetrics = traversalService.summarizeDataFiles(tableContext, snapshot);
     ManifestTraversalService.FileMetrics deleteMetrics = traversalService.summarizeDeleteFiles(tableContext, snapshot);
     Map<String, Object> row = new LinkedHashMap<>();
-    row.put("rowScope", rowScope);
     row.put("snapshotId", snapshot.snapshotId());
     row.put("sequenceNumber", snapshot.sequenceNumber());
     row.put("timestampMs", snapshot.timestampMillis());
@@ -57,9 +46,11 @@ public final class SnapshotAnalyzer {
     row.put("deleteFileCount", deleteMetrics.deleteFileCount());
     row.put("positionDeleteFileCount", deleteMetrics.positionDeleteFileCount());
     row.put("equalityDeleteFileCount", deleteMetrics.equalityDeleteFileCount());
+    row.put("dataRecordCount", dataMetrics.dataRecordCount());
+    row.put("deletedRecordCount", deleteMetrics.deleteRecordCount());
     row.put("dataBytes", dataMetrics.dataBytes());
     row.put("deleteBytes", deleteMetrics.deleteBytes());
-    row.put("deletionVectorCount", null);
+    row.put("deletionVectorCount", deleteMetrics.deletionVectorCount());
     return row;
   }
 }

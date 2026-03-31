@@ -11,6 +11,7 @@ import org.apache.iceberg.ContentFile;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.FileContent;
+import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.ManifestReader;
@@ -41,6 +42,12 @@ public final class ManifestTraversalService {
 
   public Map<String, ContentFile<?>> uniqueDeleteFiles(TableContext tableContext, Snapshot snapshot) {
     return uniqueDeleteFiles(tableContext, snapshot.deleteManifests(tableContext.fileIO()));
+  }
+
+  public FileMetrics summarizeFiles(Map<String, ? extends ContentFile<?>> filesByLocation) {
+    FileMetrics metrics = new FileMetrics();
+    filesByLocation.values().forEach(metrics::add);
+    return metrics;
   }
 
   private FileMetrics summarizeDataFiles(TableContext tableContext, List<ManifestFile> manifests) {
@@ -144,6 +151,7 @@ public final class ManifestTraversalService {
     private long deleteFileCount;
     private long positionDeleteFileCount;
     private long equalityDeleteFileCount;
+    private long deletionVectorCount;
     private long dataBytes;
     private long deleteBytes;
     private long dataRecordCount;
@@ -160,10 +168,23 @@ public final class ManifestTraversalService {
         deleteRecordCount += file.recordCount();
         if (file.content() == FileContent.POSITION_DELETES) {
           positionDeleteFileCount += 1;
+          if (isDeletionVector(file)) {
+            deletionVectorCount += 1;
+          }
         } else if (file.content() == FileContent.EQUALITY_DELETES) {
           equalityDeleteFileCount += 1;
         }
       }
+    }
+
+    private boolean isDeletionVector(ContentFile<?> file) {
+      if (!(file instanceof DeleteFile)) {
+        return false;
+      }
+      DeleteFile deleteFile = (DeleteFile) file;
+      return deleteFile.format() == FileFormat.PUFFIN
+          && deleteFile.content() == FileContent.POSITION_DELETES
+          && deleteFile.referencedDataFile() != null;
     }
 
     public long dataFileCount() {
@@ -180,6 +201,10 @@ public final class ManifestTraversalService {
 
     public long equalityDeleteFileCount() {
       return equalityDeleteFileCount;
+    }
+
+    public long deletionVectorCount() {
+      return deletionVectorCount;
     }
 
     public long dataBytes() {
@@ -205,6 +230,7 @@ public final class ManifestTraversalService {
     private long dataRecordCount;
     private long positionDeleteFileCount;
     private long equalityDeleteFileCount;
+    private long deletionVectorCount;
     private long deleteRecordCount;
     private long deleteBytes;
 
@@ -219,9 +245,22 @@ public final class ManifestTraversalService {
       deleteRecordCount += file.recordCount();
       if (file.content() == FileContent.POSITION_DELETES) {
         positionDeleteFileCount += 1;
+        if (isDeletionVector(file)) {
+          deletionVectorCount += 1;
+        }
       } else if (file.content() == FileContent.EQUALITY_DELETES) {
         equalityDeleteFileCount += 1;
       }
+    }
+
+    private boolean isDeletionVector(ContentFile<?> file) {
+      if (!(file instanceof DeleteFile)) {
+        return false;
+      }
+      DeleteFile deleteFile = (DeleteFile) file;
+      return deleteFile.format() == FileFormat.PUFFIN
+          && deleteFile.content() == FileContent.POSITION_DELETES
+          && deleteFile.referencedDataFile() != null;
     }
 
     void merge(PartitionMetrics other) {
@@ -230,6 +269,7 @@ public final class ManifestTraversalService {
       dataRecordCount += other.dataRecordCount;
       positionDeleteFileCount += other.positionDeleteFileCount;
       equalityDeleteFileCount += other.equalityDeleteFileCount;
+      deletionVectorCount += other.deletionVectorCount;
       deleteRecordCount += other.deleteRecordCount;
       deleteBytes += other.deleteBytes;
     }
@@ -252,6 +292,10 @@ public final class ManifestTraversalService {
 
     public long equalityDeleteFileCount() {
       return equalityDeleteFileCount;
+    }
+
+    public long deletionVectorCount() {
+      return deletionVectorCount;
     }
 
     public long deleteRecordCount() {

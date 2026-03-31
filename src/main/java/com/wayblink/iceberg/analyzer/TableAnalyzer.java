@@ -12,7 +12,6 @@ public final class TableAnalyzer {
 
   private final ManifestTraversalService traversalService;
   private final MetadataVersionAnalyzer metadataVersionAnalyzer;
-  private final SnapshotAnalyzer snapshotAnalyzer;
   private final PartitionAnalyzer partitionAnalyzer;
 
   public TableAnalyzer() {
@@ -22,7 +21,6 @@ public final class TableAnalyzer {
   public TableAnalyzer(ManifestTraversalService traversalService) {
     this.traversalService = traversalService;
     this.metadataVersionAnalyzer = new MetadataVersionAnalyzer();
-    this.snapshotAnalyzer = new SnapshotAnalyzer(traversalService);
     this.partitionAnalyzer = new PartitionAnalyzer(traversalService);
   }
 
@@ -35,12 +33,10 @@ public final class TableAnalyzer {
       case METADATA_VERSION:
         rows = metadataVersionAnalyzer.analyze(tableContext);
         break;
-      case SNAPSHOT:
-        rows = snapshotAnalyzer.analyze(tableContext, request.scope());
-        break;
       case PARTITION:
-        rows = partitionAnalyzer.analyze(tableContext, request.scope());
+        rows = partitionAnalyzer.analyze(tableContext, tableContext.table().currentSnapshot());
         break;
+      case SNAPSHOT:
       default:
         throw new IllegalStateException("Unsupported group-by: " + request.groupBy());
     }
@@ -55,12 +51,16 @@ public final class TableAnalyzer {
   private List<Map<String, Object>> analyzeTableSummary(TableContext tableContext) {
     List<Map<String, Object>> rows = new ArrayList<>();
     Snapshot currentSnapshot = tableContext.table().currentSnapshot();
-    ManifestTraversalService.FileMetrics currentDataMetrics = currentSnapshot == null
-        ? new ManifestTraversalService.FileMetrics()
-        : traversalService.summarizeDataFiles(tableContext, currentSnapshot);
-    ManifestTraversalService.FileMetrics currentDeleteMetrics = currentSnapshot == null
-        ? new ManifestTraversalService.FileMetrics()
-        : traversalService.summarizeDeleteFiles(tableContext, currentSnapshot);
+    Map<String, ContentFile<?>> currentUniqueDataFiles = currentSnapshot == null
+        ? new LinkedHashMap<>()
+        : traversalService.uniqueDataFiles(tableContext, currentSnapshot);
+    Map<String, ContentFile<?>> currentUniqueDeleteFiles = currentSnapshot == null
+        ? new LinkedHashMap<>()
+        : traversalService.uniqueDeleteFiles(tableContext, currentSnapshot);
+    ManifestTraversalService.FileMetrics currentDataMetrics =
+        traversalService.summarizeFiles(currentUniqueDataFiles);
+    ManifestTraversalService.FileMetrics currentDeleteMetrics =
+        traversalService.summarizeFiles(currentUniqueDeleteFiles);
 
     Map<String, ContentFile<?>> uniqueDataFiles = new LinkedHashMap<>();
     Map<String, ContentFile<?>> uniqueDeleteFiles = new LinkedHashMap<>();
@@ -84,9 +84,11 @@ public final class TableAnalyzer {
     row.put("currentDeleteFileCount", currentDeleteMetrics.deleteFileCount());
     row.put("currentDataBytes", currentDataMetrics.dataBytes());
     row.put("currentDeleteBytes", currentDeleteMetrics.deleteBytes());
+    row.put("tableRowCount", currentDataMetrics.dataRecordCount());
+    row.put("deletedRecordCount", currentDeleteMetrics.deleteRecordCount());
     row.put("uniqueHistoricalDataFileCount", uniqueDataFiles.size());
     row.put("uniqueHistoricalDeleteFileCount", uniqueDeleteFiles.size());
-    row.put("deletionVectorCount", null);
+    row.put("deletionVectorCount", currentDeleteMetrics.deletionVectorCount());
     rows.add(row);
     return rows;
   }

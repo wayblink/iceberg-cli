@@ -176,6 +176,11 @@ final class ValueFormatter {
     labels.put("currentDeleteFileCount", "Delete Files");
     labels.put("currentDataBytes", "Data Size");
     labels.put("currentDeleteBytes", "Delete Size");
+    labels.put("tableRowCount", "Table Rows");
+    labels.put("deletedRecordCount", "Deleted Record Rows");
+    labels.put("deleteRecordCount", "Deleted Record Rows");
+    labels.put("dataRecordCount", "Data Record Rows");
+    labels.put("deletionVectorCount", "Deletion Vector Count");
     labels.put("metadataVersionCount", "Metadata Versions");
     labels.put("snapshotVersionCount", "Snapshot Versions");
     labels.put("partitionSpecCount", "Partition Specs");

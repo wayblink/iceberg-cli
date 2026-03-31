@@ -23,7 +23,7 @@ import picocli.CommandLine.Command;
     mixinStandardHelpOptions = true,
     description = {
         "Inspect Iceberg metadata targets from local paths, HDFS, or S3A.",
-        "Use `open` once to establish a current session, then run `show`, `stat`, or `scan` commands without repeating --path."
+      "Use `open` once to establish a current session, then run `list`, `show`, `stat`, or `scan` commands without repeating --path."
     },
     descriptionHeading = "%nDescription:%n",
     optionListHeading = "%nOptions:%n",
@@ -33,8 +33,9 @@ import picocli.CommandLine.Command;
         "  iceberg-inspect open /warehouse/db/orders/metadata",
         "  iceberg-inspect open hdfs://nameservice1/warehouse/db/orders/metadata --fs hdfs --hadoop-conf-dir /etc/hadoop/conf",
         "  iceberg-inspect open s3a://bucket/warehouse/db/orders/metadata --fs s3a --s3-endpoint http://minio:9000 --s3-region us-east-1 --s3-path-style",
-        "  iceberg-inspect stat table --scope all --group-by snapshot",
-        "  iceberg-inspect show manifests --snapshot-id 123456789",
+      "  iceberg-inspect list snapshots --path /warehouse/db/orders/metadata",
+      "  iceberg-inspect stat table --path /warehouse/db/orders/metadata",
+      "  iceberg-inspect stat snapshot --snapshot-id 123456789 --group-by partition --format json",
         "",
         "  iceberg-inspect open /warehouse",
         "  iceberg-inspect use table db/orders",
@@ -45,6 +46,7 @@ import picocli.CommandLine.Command;
         CurrentCommand.class,
         CloseCommand.class,
         UseCommand.class,
+      ListCommand.class,
         ShowCommand.class,
         StatCommand.class,
         ScanCommand.class

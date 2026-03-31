@@ -4,7 +4,6 @@ import com.wayblink.iceberg.analyzer.AnalysisGroupBy;
 import com.wayblink.iceberg.analyzer.AnalysisPrecision;
 import com.wayblink.iceberg.analyzer.AnalysisRequest;
 import com.wayblink.iceberg.analyzer.AnalysisResult;
-import com.wayblink.iceberg.analyzer.AnalysisScope;
 import com.wayblink.iceberg.analyzer.TableAnalyzer;
 import com.wayblink.iceberg.loader.TableContext;
 import com.wayblink.iceberg.render.JsonRenderer;
@@ -30,7 +29,7 @@ import picocli.CommandLine.Spec;
     footerHeading = "%nExamples:%n",
     footer = {
         "  iceberg-inspect stat table",
-        "  iceberg-inspect stat table --scope all --group-by snapshot",
+        "  iceberg-inspect stat table --group-by partition",
         "  iceberg-inspect stat table --group-by partition --format json"
     })
 public final class StatTableCommand implements Callable<Integer> {
@@ -46,15 +45,9 @@ public final class StatTableCommand implements Callable<Integer> {
   private String path;
 
   @Option(
-      names = "--scope",
-      defaultValue = "current",
-      description = "Analysis scope: current, history, or all.")
-  private String scope;
-
-  @Option(
       names = "--group-by",
       defaultValue = "table",
-      description = "Grouping: table, metadata-version, snapshot, or partition.")
+      description = "Grouping: table, metadata-version, or partition.")
   private String groupBy;
 
   @Mixin
@@ -77,10 +70,13 @@ public final class StatTableCommand implements Callable<Integer> {
     TableContext tableContext = path == null
         ? rootCommand.requireCurrentTable(storageOptionsMixin.toOptions(), storageOptionsMixin.hasOverrides())
         : rootCommand.loadTable(path, storageOptions);
-    AnalysisRequest request = new AnalysisRequest(
-        AnalysisScope.parse(scope),
-        AnalysisGroupBy.parse(groupBy),
-        AnalysisPrecision.parse(mode));
+    AnalysisGroupBy resolvedGroupBy = AnalysisGroupBy.parse(groupBy);
+    if (resolvedGroupBy == AnalysisGroupBy.SNAPSHOT) {
+      throw new picocli.CommandLine.ParameterException(
+          spec.commandLine(),
+            "`stat table` no longer supports --group-by snapshot. Use `stat snapshot --snapshot-id <id>` or `stat snapshot --latest`.");
+    }
+    AnalysisRequest request = new AnalysisRequest(resolvedGroupBy, AnalysisPrecision.parse(mode));
     AnalysisResult result = tableAnalyzer.analyzeTable(tableContext, request);
     render(result, renderOptions.resolve());
     return 0;

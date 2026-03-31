@@ -4,7 +4,6 @@ import com.wayblink.iceberg.analyzer.AnalysisGroupBy;
 import com.wayblink.iceberg.analyzer.AnalysisPrecision;
 import com.wayblink.iceberg.analyzer.AnalysisRequest;
 import com.wayblink.iceberg.analyzer.AnalysisResult;
-import com.wayblink.iceberg.analyzer.AnalysisScope;
 import com.wayblink.iceberg.discovery.ResolvedTarget;
 import com.wayblink.iceberg.render.JsonRenderer;
 import com.wayblink.iceberg.render.RenderFormat;
@@ -77,7 +76,7 @@ public final class ScanTableCommand implements Callable<Integer> {
         "scan-table",
         target.inputPath(),
         formatVersion,
-        new AnalysisRequest(AnalysisScope.CURRENT, AnalysisGroupBy.TABLE, AnalysisPrecision.SUMMARY),
+        new AnalysisRequest(AnalysisGroupBy.TABLE, AnalysisPrecision.SUMMARY),
         Collections.singletonList(row));
 
     String output = renderOptions.resolve() == RenderFormat.JSON

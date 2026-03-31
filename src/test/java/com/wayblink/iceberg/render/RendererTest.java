@@ -6,7 +6,6 @@ import com.wayblink.iceberg.analyzer.AnalysisGroupBy;
 import com.wayblink.iceberg.analyzer.AnalysisPrecision;
 import com.wayblink.iceberg.analyzer.AnalysisRequest;
 import com.wayblink.iceberg.analyzer.AnalysisResult;
-import com.wayblink.iceberg.analyzer.AnalysisScope;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -25,7 +24,7 @@ class RendererTest {
         "table",
         "sample",
         2,
-        new AnalysisRequest(AnalysisScope.CURRENT, AnalysisGroupBy.TABLE, AnalysisPrecision.AUTO),
+        new AnalysisRequest(AnalysisGroupBy.TABLE, AnalysisPrecision.AUTO),
         Collections.singletonList(row));
 
     String json = new JsonRenderer().render(result);
@@ -46,12 +45,15 @@ class RendererTest {
     row.put("currentDeleteFileCount", 0);
     row.put("currentDataBytes", 7328863547909L);
     row.put("currentDeleteBytes", 0L);
+    row.put("tableRowCount", 1048576L);
+    row.put("deletedRecordCount", 4096L);
+    row.put("deletionVectorCount", 12L);
 
     AnalysisResult result = new AnalysisResult(
         "table",
         "/warehouse/db/table",
         2,
-        new AnalysisRequest(AnalysisScope.CURRENT, AnalysisGroupBy.TABLE, AnalysisPrecision.AUTO),
+        new AnalysisRequest(AnalysisGroupBy.TABLE, AnalysisPrecision.AUTO),
         Collections.singletonList(row));
 
     String rendered = new TableRenderer().render(result);
@@ -60,6 +62,11 @@ class RendererTest {
     assertTrue(rendered.contains("Data Files"));
     assertTrue(rendered.contains("26,656"));
     assertTrue(rendered.contains("TiB"));
+    assertTrue(rendered.contains("Table Rows"));
+    assertTrue(rendered.contains("1,048,576"));
+    assertTrue(rendered.contains("Deleted Record Rows"));
+    assertTrue(rendered.contains("4,096"));
+    assertTrue(rendered.contains("Deletion Vector Count"));
   }
 
   @Test
@@ -78,7 +85,7 @@ class RendererTest {
         "snapshot",
         "/warehouse/db/table",
         2,
-        new AnalysisRequest(AnalysisScope.HISTORY, AnalysisGroupBy.SNAPSHOT, AnalysisPrecision.SUMMARY),
+        new AnalysisRequest(AnalysisGroupBy.SNAPSHOT, AnalysisPrecision.SUMMARY, 102L),
         java.util.Arrays.asList(first, second));
 
     String rendered = new TableRenderer().render(result);
@@ -86,6 +93,7 @@ class RendererTest {
     assertTrue(rendered.contains("Snapshot"));
     assertTrue(rendered.contains("SNAPSHOT ID"));
     assertTrue(rendered.contains("OPERATION"));
+    assertTrue(rendered.contains("MANIFEST COUNT"));
     assertTrue(rendered.contains("overwrite"));
   }
 }

@@ -49,6 +49,23 @@ class ShowCommandsTest {
   }
 
   @Test
+  void showCommandsSupportDirectPathWithoutOpen() throws IOException {
+    Path tablePath = IcebergTableFixtures.createPartitionedTable(tempDir.resolve("warehouse-direct"));
+    Path metadataPath = tablePath.resolve("metadata");
+    Path sessionFile = tempDir.resolve("session-direct.json");
+    ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+    CommandLine cli = cli(sessionFile, stdout);
+
+    assertEquals(0, cli.execute("show", "table", "--path", metadataPath.toString()));
+    assertEquals(0, cli.execute("show", "snapshots", "--path", metadataPath.toString(), "--json"));
+
+    String output = stdout.toString(StandardCharsets.UTF_8);
+    assertTrue(output.contains("Table Summary"));
+    assertTrue(output.contains("\"resultType\":\"show-snapshots\""));
+    assertTrue(output.contains("\"target\":{\"path\":"));
+  }
+
+  @Test
   void showCommandsReadMirroredLocalMetadataArtifactsWhenOriginalPathsAreRemote() throws IOException {
     Path sessionFile = tempDir.resolve("session.json");
     ByteArrayOutputStream stdout = new ByteArrayOutputStream();
