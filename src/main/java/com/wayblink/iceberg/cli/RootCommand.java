@@ -21,6 +21,7 @@ import picocli.CommandLine.Command;
 @Command(
     name = "iceberg-inspect",
     mixinStandardHelpOptions = true,
+    versionProvider = CliVersionProvider.class,
     description = {
         "Inspect Iceberg metadata targets from local paths, HDFS, or S3A.",
       "Use `open` once to establish a current session, then run `list`, `show`, `stat`, or `scan` commands without repeating --path."

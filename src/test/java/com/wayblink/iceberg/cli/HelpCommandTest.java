@@ -24,6 +24,14 @@ class HelpCommandTest {
   }
 
   @Test
+  void versionFlagPrintsPomVersion() {
+    HelpResult result = executeHelp("-V");
+
+    assertEquals(0, result.exitCode());
+    assertTrue(result.output().contains("iceberg-inspect 0.1.0-SNAPSHOT"));
+  }
+
+  @Test
   void statTableHelpHasOwnHelpOptionAndExamples() {
     HelpResult result = executeHelp("stat", "table", "--help");
 
